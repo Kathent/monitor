@@ -1,0 +1,26 @@
+#redis 配置192.168.96.140:6379
+redisdb:
+  password: hn2ife0epZlV
+  addr: 127.0.0.1:6379
+  user: 
+  database: 1
+
+# rabbitMQ配置信息
+rabbitmq:
+  addr: amqp://guest:guest@127.0.0.1:5672
+
+# 是否处于debug模式
+debugconfig:
+  debug: true
+  monitoraddr: :51672
+
+# 日志级别
+logger:
+   level: info
+
+# agent status change
+http:
+  addr: :4999
+
+#mongodb
+addr: 127.0.0.1

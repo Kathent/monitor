@@ -1,0 +1,12 @@
+.idea
+*.iml
+*/.vscode
+pkg
+bin
+**/*.exe
+coverprofile
+config.yml
+.vscode
+src/main/debug
+src/main/main.exe
+.project
