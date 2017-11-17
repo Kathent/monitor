@@ -7,12 +7,13 @@ import (
 	"paas/icsoc-monitor/constants"
 	"paas/icsoc-monitor/db"
 
+	"strconv"
+	"time"
+
+	"paas/icsoc-monitor/util"
+
 	log "github.com/alecthomas/log4go"
 	"github.com/streadway/amqp"
-	"time"
-	"gopkg.in/mgo.v2/bson"
-	"paas/icsoc-monitor/util"
-	"strconv"
 )
 
 const (
