@@ -303,6 +303,12 @@ func syncSessionEnd(delivery amqp.Delivery) {
 	}else {
 		//今日完成会话数
 		pipe.HIncrBy(channelKey, constants.CHANNEL_MONITOR_FIELD_END_SESSION_NUM, 1)
+
+		//首次响应时长
+		pipe.HIncrBy(channelKey, constants.CHANNEL_MONITOR_FIELD_FIRST_RESP_TOTAL, sessionEndMq.FirstRespTime)
+
+		//会话持续时长
+		pipe.HIncrBy(channelKey, constants.CHANNEL_MONITOR_FIELD_SESSION_TIME_TOTAL, sr.SessionKeepSecs)
 	}
 
 	//排队放弃数
