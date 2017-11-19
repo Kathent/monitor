@@ -221,4 +221,7 @@ const(
 const (
 	DATE_FORMATE = "20160102"
 	DATE_FORMATE_ALL = "2006-01-02 09:00:00"
+
+	EVENT_TYPE_SESSION_END = "sessionEnd"
+	EVENT_TYPE_SESSION_CONTENT = "sessionContent"
 )

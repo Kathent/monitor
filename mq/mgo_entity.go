@@ -35,3 +35,10 @@ type SessionRecord struct {
 	Evaluate string `bson:"evaluate"`
 	EvalExplain string `bson:"evaluate_explain"`
 }
+
+type SessionContent struct {
+	SessionId string `bson:"sid"`
+	Index int `bson:"index"`
+	Type string `bson:"type"`
+	Content string `bson:"content"`
+}

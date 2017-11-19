@@ -14,6 +14,8 @@ import (
 
 	log "github.com/alecthomas/log4go"
 	"github.com/streadway/amqp"
+	"strings"
+	"gopkg.in/mgo/bson"
 )
 
 const (
@@ -60,7 +62,11 @@ func init() {
 	routeMap[routeKey_connSuccess] = syncConSuc
 	routeMap[routeKey_agentBreak] = syncAgentBreak
 	routeMap[routeKey_agentStatus] = syncAgentStatus
-	routeMap[routeKey_session] = syncSessionEnd
+	routeMap[routeKey_session] = syncSession
+	routeMap[routeKey_inQueue] = syncInQueue
+	routeMap[routeKey_outQueue] = syncOutQueue
+	routeMap[routeKey_message] = syncMessage
+	routeMap[routeKey_evaluate] = syncEvaluate
 }
 
 func GetRouteKeys() []string{
@@ -189,13 +195,110 @@ func syncAgentStatus(delivery amqp.Delivery) {
 		log.Warn("syncAgentStatus insert err:%v, mgoStruct:%+v", insertErr, mgoStruct)
 		return
 	}
+
+	//坐席监控
+	agentMonitorKey := fmt.Sprintf(constants.AGENT_MONITOR_HASH_KEY, agentChangeTime,
+		agentStatus.VccId, agentStatus.AgentId)
+
+	pipe := db.GetClient().Pipeline()
+
+	//坐席状态
+	pipe.HSet(agentMonitorKey, constants.AGENT_MONITOR_FIELD_STATUS,
+		fmt.Sprintf("%d", agentStatus.Status))
+
+	//坐席状态开始时间
+	pipe.HSet(agentMonitorKey, constants.AGENT_MONITOR_FIELD_STATUS_START_TIME,
+		fmt.Sprintf("%d", agentStatus.StampTime))
+
+	arr, err := db.GetClient().HMGet(agentMonitorKey, constants.AGENT_MONITOR_FIELD_STATUS,
+		constants.AGENT_MONITOR_FIELD_STATUS_START_TIME).Result()
+	if err != nil {
+		log.Warn("syncAgentStatus hGet err:%v, mgoStruct:%+v", insertErr, mgoStruct)
+		needAck = false
+		return
+	}
+
+	preStatus := util.GetString(arr[0])
+	startTime := util.GetString(arr[1])
+
+	var startTimeInt64 int64
+	startTimeInt, err := strconv.Atoi(startTime)
+	if err != nil {
+		startTimeInt64 = now.Unix()
+	}else {
+		startTimeInt64 = int64(startTimeInt)
+	}
+
+	if preStatus == "2" && agentStatus.Status != 2 {
+		pipe.HIncrBy(agentMonitorKey, constants.AGENT_MONITOR_FIELD_ONLINE_TIME_TOTAL,
+			now.Unix() - startTimeInt64)
+	}
+
+	if preStatus == "1" && agentStatus.Status != 1{
+		pipe.HIncrBy(agentMonitorKey, constants.AGENT_MONITOR_FIELD_BUSY_TIME_TOTAL,
+			now.Unix() - startTimeInt64)
+	}
+
+	_, err = pipe.Exec()
+	if err != nil {
+		log.Warn("syncAgentStatus pipe exec err:%v, mgoStruct:%+v", insertErr, mgoStruct)
+		needAck = false
+		return
+	}
+}
+
+//会话结束
+func syncSession(delivery amqp.Delivery) {
+	jsonStr := string(delivery.Body)
+	if strings.Contains(jsonStr, constants.EVENT_TYPE_SESSION_END) {
+		syncSessionEnd(delivery)
+	}else if strings.Contains(jsonStr, constants.EVENT_TYPE_SESSION_CONTENT) {
+		syncSessionContent(delivery)
+	}else {
+		log.Warn("syncSession event type wrong. body:%s", jsonStr)
+	}
+}
+
+//会话内容
+func syncSessionContent(delivery amqp.Delivery) {
+	var needAck bool
+	defer deferAck(delivery, needAck)
+
+	sessionContent := SessionContentMQ{}
+	unmarshalErr := json.Unmarshal(delivery.Body, &sessionContent)
+	if unmarshalErr != nil {
+		log.Warn("syncSessionContent unmarshal err:%v, body:%v", unmarshalErr, delivery.Body)
+		return
+	}
+
+	database := db.GetSession().DB("")
+	query := database.C(constants.STATICS_SR_TABLE_NAME).Find(bson.M{"sid": sessionContent.SessionID})
+	var res = SessionRecord{}
+	err := query.One(&res)
+	if err != nil {
+		log.Warn("syncSessionContent cannot find session record. err:%v, content:%+v", err, sessionContent)
+		return
+	}
+
+	//TODO: 会话内容类型
+	ct := SessionContent{
+		SessionId: sessionContent.SessionID,
+		Index: sessionContent.Index,
+		Type: "",
+		//Content: sessionContent.Content
+	}
+
+	err = database.C(constants.STATICS_SC_TABLE_NAME).Insert(&ct)
+	if err != nil {
+		log.Warn("syncSessionContent insert err:%v, ct:%+v", err, ct)
+		return
+	}
 }
 
 //会话结束
 func syncSessionEnd(delivery amqp.Delivery) {
-	var needAck = true
+	var needAck bool
 	defer deferAck(delivery, needAck)
-
 	sessionEndMq := SessionEndMq{}
 	unmarshalErr := json.Unmarshal(delivery.Body, &sessionEndMq)
 	if unmarshalErr != nil {
@@ -228,6 +331,7 @@ func syncSessionEnd(delivery amqp.Delivery) {
 	insertErr := collection.Insert(sr)
 	if insertErr != nil {
 		log.Warn("syncSessionEnd insert err:%v, mgoStruct:%+v", insertErr, sr)
+		needAck = false
 		return
 	}
 
@@ -235,6 +339,10 @@ func syncSessionEnd(delivery amqp.Delivery) {
 	//会话结束 坐席监控 当前连接数-1
 	agentMonitorKey := fmt.Sprintf(constants.AGENT_MONITOR_HASH_KEY,
 		transTime, sessionEndMq.VccId, sessionEndMq.AgentId)
+
+	//会话结束 渠道监控
+	channelKey := fmt.Sprintf(constants.CHANNEL_MONITOR_HASH_KEY, transTime, sessionEndMq.VccId,
+		sessionEndMq.Source.SourceId)
 
 	pipe.HIncrBy(agentMonitorKey, constants.AGENT_MONITOR_FIELD_CUR_SESSION_NUM, -1)
 
@@ -252,9 +360,9 @@ func syncSessionEnd(delivery amqp.Delivery) {
 			}
 
 			//受评数
-			if sessionEndMq.EvaluateStatus == "1" {
-				pipe.HIncrBy(agentMonitorKey, constants.AGENT_MONITOR_FIELD_RECEIVE_EVAL_TIMES, 1)
-			}
+			//if sessionEndMq.EvaluateStatus == "1" {
+			//	pipe.HIncrBy(agentMonitorKey, constants.AGENT_MONITOR_FIELD_RECEIVE_EVAL_TIMES, 1)
+			//}
 		}else {
 			//参与转接数
 			pipe.HIncrBy(agentMonitorKey, constants.AGENT_MONITOR_FIELD_DEP_SESSION_NUM, 1)
@@ -273,12 +381,30 @@ func syncSessionEnd(delivery amqp.Delivery) {
 		//坐席服务客户数
 		serveClientKey := fmt.Sprintf(constants.AGENT_SERVE_CLIENT_SET, transTime, sessionEndMq.VccId,
 			sessionEndMq.AgentId)
-		pipe.SAdd(serveClientKey, sessionEndMq.UserId)
+
+		add, _ := db.GetClient().SAdd(serveClientKey, sessionEndMq.UserId).Result()
+		if add > 0 {//add 成功 坐席服务客户数加1
+			pipe.HIncrBy(agentMonitorKey, constants.AGENT_MONITOR_FIELD_SERV_USER_NUM, 1)
+			pipe.HIncrBy(channelKey, constants.CHANNEL_MONITOR_FIELD_SERVE_USER_NUM, 1)
+		}
 
 		//客户对应父会话id
 		clientCidSetKey := fmt.Sprintf(constants.CLIENT_CID_SET, transTime, sessionEndMq.VccId,
 			sessionEndMq.UserId)
-		pipe.SAdd(clientCidSetKey, sessionEndMq.Cid)
+		db.GetClient().SAdd(clientCidSetKey, sessionEndMq.Cid)
+		cidNum, _ := db.GetClient().SCard(clientCidSetKey).Result()
+		//一次会话客户数
+		if cidNum <= 1 {
+			pipe.HIncrBy(agentMonitorKey, constants.AGENT_MONITOR_FIELD_ONE_SERV_CLIENT_NUM, 1)
+			pipe.HIncrBy(channelKey, constants.CHANNEL_MONITOR_FIELD_C_SESSION_NUM, 1)
+
+			//if sessionEndMq.EvaluateStatus == "1" {//已评价父会话数
+			//	pipe.HIncrBy(channelKey, constants.CHANNEL_MONITOR_FIELD_EVALUATE_NUM, 1)
+			//}
+		}else {
+			//一次会话客户数
+			pipe.HIncrBy(agentMonitorKey, constants.AGENT_MONITOR_FIELD_ONE_SERV_CLIENT_NUM, -1)
+		}
 	}
 
 	//转入会话次数
@@ -291,12 +417,7 @@ func syncSessionEnd(delivery amqp.Delivery) {
 		pipe.HIncrBy(agentMonitorKey, constants.AGENT_MONITOR_FIELD_TRANSFER_OUT_TIMES, 1)
 	}
 
-
-	//会话结束 渠道监控
-	channelKey := fmt.Sprintf(constants.CHANNEL_MONITOR_HASH_KEY, transTime, sessionEndMq.VccId,
-		sessionEndMq.Source.SourceId)
-
-	pipe.HIncrBy(channelKey, constants.CHANNEL_MONITOR_FIELD_SESSION_NUM, 1)
+	pipe.HIncrBy(channelKey, constants.CHANNEL_MONITOR_FIELD_SESSION_NUM, -1)
 
 	//无效会话
 	if sessionEndMq.UserSpeakNum <= 0 {
@@ -316,4 +437,76 @@ func syncSessionEnd(delivery amqp.Delivery) {
 	if sessionEndMq.GiveUpQueueing == 1 {
 		pipe.HIncrBy(channelKey, constants.CHANNEL_MONITOR_FIELD_GIVEUP_QUEUE_NUM, 1)
 	}
+}
+
+//进入排队
+func syncInQueue(delivery amqp.Delivery) {
+	var needAck bool
+	defer deferAck(delivery, needAck)
+
+	im := InQueueMQ{}
+	unmarshalErr := json.Unmarshal(delivery.Body, &im)
+	if unmarshalErr != nil {
+		log.Warn("syncInQueue unmarshal err:%v, body:%v", unmarshalErr, delivery.Body)
+		return
+	}
+
+	tranTime := TransDate(im.InQueueTime, constants.DATE_FORMATE)
+	channelKey := fmt.Sprintf(constants.CHANNEL_MONITOR_HASH_KEY, tranTime, im.VccID, im.ChannelID)
+
+	db.GetClient().HIncrBy(channelKey, constants.CHANNEL_MONITOR_FIELD_QUEUE_NUM, 1)
+}
+
+func syncOutQueue(delivery amqp.Delivery) {
+	var needAck bool
+	defer deferAck(delivery, needAck)
+
+	im := OutQueueMQ{}
+	unmarshalErr := json.Unmarshal(delivery.Body, &im)
+	if unmarshalErr != nil {
+		log.Warn("syncOutQueue unmarshal err:%v, body:%v", unmarshalErr, delivery.Body)
+		return
+	}
+
+	tranTime := TransDate(im.OutQueueTime, constants.DATE_FORMATE)
+	channelKey := fmt.Sprintf(constants.CHANNEL_MONITOR_HASH_KEY, tranTime, im.VccID, im.ChannelID)
+
+	db.GetClient().HIncrBy(channelKey, constants.CHANNEL_MONITOR_FIELD_QUEUE_NUM, -1)
+}
+
+//留言
+func syncMessage(delivery amqp.Delivery) {
+	var needAck bool
+	defer deferAck(delivery, needAck)
+
+	im := WebMessageMQ{}
+	unmarshalErr := json.Unmarshal(delivery.Body, &im)
+	if unmarshalErr != nil {
+		log.Warn("syncMessage unmarshal err:%v, body:%v", unmarshalErr, delivery.Body)
+		return
+	}
+
+	tranTime := TransDate(im.MessageTime, constants.DATE_FORMATE)
+	channelKey := fmt.Sprintf(constants.CHANNEL_MONITOR_HASH_KEY, tranTime, im.VccID, im.ChannelID)
+
+	db.GetClient().HIncrBy(channelKey, constants.CHANNEL_MONITOR_FIELD_ADD_MSG_NUM, 1)
+}
+
+//满意度评价
+func syncEvaluate(delivery amqp.Delivery){
+	var needAck bool
+	defer deferAck(delivery, needAck)
+
+	eval := EvaluateMsgMQ{}
+	unmarshalErr := json.Unmarshal(delivery.Body, &eval)
+	if unmarshalErr != nil {
+		log.Warn("syncEvaluate unmarshal err:%v, body:%v", unmarshalErr, delivery.Body)
+		return
+	}
+
+	transTime := TransDate(eval.ConnSuccessTime, constants.DATE_FORMATE)
+	agentKey := fmt.Sprintf(constants.AGENT_MONITOR_HASH_KEY, transTime, eval.VccID, eval.AgentID)
+
+	pipe := db.GetClient().Pipeline()
+	pipe.HIncrBy()
 }

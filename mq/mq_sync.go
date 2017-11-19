@@ -8,7 +8,7 @@ import (
 
 const (
 	exchangeName = "icsoc.imcsmq.ex"
-	queueName = "icsoc-monitor"
+	queueName = "icsoc-icsoc-monitor"
 )
 
 func StartMq() {

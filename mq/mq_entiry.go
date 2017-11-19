@@ -128,3 +128,15 @@ type SessionEndMq struct {
 		SourceId string `json:"sourceId"`
 	}
 }
+
+//会话结束的会话内容消息体，发送MQ
+type SessionContentMQ struct {
+	EventType  string   `json:"eventType"`
+	ChannelID  string   `json:"channelId"`
+	SourceType int      `json:"sourceType"`
+	SessionID  string   `json:"sessionId"`
+	VccID      string   `json:"vccId"`
+	UserID     string   `json:"userId"`
+	Index      int      `json:"index"`
+	Content    []map[string]interface{} `json:"content"`
+}
