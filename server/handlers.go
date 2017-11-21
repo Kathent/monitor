@@ -19,6 +19,7 @@ import (
 	"gopkg.in/mgo.v2/bson"
 )
 
+//工作量统计
 func AgentWorkStatics(context *gin.Context){
 	var req MonitorRequest
 	var res MonitorResponse
@@ -37,9 +38,9 @@ func AgentWorkStatics(context *gin.Context){
 	var pipe *mgo.Pipe
 	if util.IsEmpty(req.AgentId) {
 		split := strings.Split(req.AgentId, ",")
-		pipe = collection.Pipe([]bson.M{{"$match": bson.M{"vccId": agentReq.VccId,
+		pipe = collection.Pipe([]bson.M{{"$match": bson.M{"vcc_id": agentReq.VccId,
 			"date": bson.M{"$gte": agentReq.Start, "$lt": agentReq.End}},
-			"agentId": bson.M{"$in": split},},
+			"ag_id": bson.M{"$in": split},},
 			{"$group":	bson.M{"_id": "$worker_id", "group_ids": bson.M{"$first": ""},
 				"online_secs": bson.M{"$sum":"$online_secs"},
 				"busy_secs": bson.M{"$sum": "$busy_secs"},
@@ -52,7 +53,7 @@ func AgentWorkStatics(context *gin.Context){
 			{"$sort": bson.M{agentReq.SortField: agentReq.GetSortSym()}},
 		})
 	}else {
-		pipe = collection.Pipe([]bson.M{{"$match": bson.M{"vccId": agentReq.VccId,
+		pipe = collection.Pipe([]bson.M{{"$match": bson.M{"vcc_id": agentReq.VccId,
 			"date": bson.M{"$gte": agentReq.Start, "$lt": agentReq.End}}},
 			{"$group":	bson.M{"_id": "$worker_id", "group_ids": bson.M{"$first": ""},
 				"online_secs": bson.M{"$sum":"$online_secs"},
@@ -84,7 +85,18 @@ func AgentWorkStatics(context *gin.Context){
 	}
 
 	res.Data.Rows = make([]interface{}, 0)
+	var tmpMap map[string]interface{}
 	for _, v := range arr {
+		tmpMap = make(map[string]interface{})
+
+		tmpMap["online_secs"] = util.GetIntString(v.OnlineSecs)
+		tmpMap["busy_secs"] = util.GetIntString(v.BusySecs)
+		tmpMap["in_session_num"] = util.GetIntString(v.InSessionNum)
+		tmpMap["invalid_session_num"] = util.GetIntString(v.InvalidSessionNum)
+		tmpMap["receive_session_num"] = util.GetIntString(v.ReceiveSessionNUm)
+		tmpMap["trans_in_session_num"] = util.GetIntString(v.TransInSessionNum)
+		tmpMap["trans_out_session_num"] = util.GetIntString(v.TransOutSessionNum)
+		tmpMap["reply_news_num"] = util.GetIntString(v.ReplyNewsNum)
 		res.Data.Rows = append(res.Data.Rows, v)
 	}
 
@@ -165,6 +177,7 @@ func transAgentReq(req *MonitorRequest, defaultField string) (*AgentRequest, err
 	return &ar, nil
 }
 
+//绩效统计
 func AgentAchievements(context *gin.Context){
 	var req MonitorRequest
 	var res MonitorResponse
@@ -190,6 +203,7 @@ func AgentAchievements(context *gin.Context){
 				"receive_msg_times": bson.M{"$sum":"$receive_msg_times"},
 				"reply_news_num": bson.M{"$sum": "$reply_news_num"},
 				"in_session_num": bson.M{"$sum": "$in_session_num"},
+				"require_eval_times": bson.M{"$sum": "$require_eval_times"},
 				"total_session_num": bson.M{"$sum": "$total_session_num"},
 				"invalid_session_num": bson.M{"$sum": "$invalid_session_num"},
 				"serv_user_num": bson.M{"$sum": "$serv_user_num"},
@@ -207,6 +221,7 @@ func AgentAchievements(context *gin.Context){
 				"receive_msg_times": bson.M{"$sum":"$receive_msg_times"},
 				"reply_news_num": bson.M{"$sum": "$reply_news_num"},
 				"in_session_num": bson.M{"$sum": "$in_session_num"},
+				"require_eval_times": bson.M{"$sum": "$require_eval_times"},
 				"total_session_num": bson.M{"$sum": "$total_session_num"},
 				"invalid_session_num": bson.M{"$sum": "$invalid_session_num"},
 				"serv_user_num": bson.M{"$sum": "$serv_user_num"},
@@ -235,11 +250,30 @@ func AgentAchievements(context *gin.Context){
 	}
 
 	res.Data.Rows = make([]interface{}, 0)
+	var tmpMap map[string]interface{}
 	for _, v := range arr {
 		v.AvgResponseSecs = v.FirstRespSecs / int64(v.TotalSessionNum)
 		v.AvgSessionSecs = v.SessionKeepSecs / int64(v.TotalSessionNum)
 		v.ArRatio = float64(v.ReceiveMsgTimes) / float64(v.ReplyNewsNum)
 		v.EvalRatio = float64(v.ReceiveEvalTimes) / float64(v.InSessionNum)
+		v.InvalidRatio = float64(v.InvalidSessionNum) / float64(v.TotalSessionNum)
+
+
+		tmpMap = make(map[string]interface{})
+
+		tmpMap["receive_msg_times"] = util.GetString(v.ReceiveMsgTimes)
+		tmpMap["reply_news_num"] = util.GetString(v.ReplyNewsNum)
+		tmpMap["ar_ratio"] = fmt.Sprintf("%.2f", v.ArRatio)
+		tmpMap["require_eval_times"] = util.GetString(v.RequireEvalTimes)
+		tmpMap["total_session_num"] = util.GetString(v.TotalSessionNum)
+		tmpMap["invalid_session_num"] = util.GetString(v.InvalidSessionNum)
+		tmpMap["invalid_ratio"] = fmt.Sprintf("%.2f", v.InvalidRatio)
+		tmpMap["avg_response_secs"] = util.GetIntString(v.AvgResponseSecs)
+		tmpMap["avg_session_secs"] = util.GetIntString(v.AvgSessionSecs)
+		tmpMap["serv_user_num"] = util.GetString(v.ServeUserNum)
+		tmpMap["one_serv_client_num"] = util.GetString(v.OneServeClientNum)
+		tmpMap["receive_eval_times"] = util.GetString(v.ReceiveEvalTimes)
+		tmpMap["eval_ratio"] = fmt.Sprintf("%.2f", v.EvalRatio)
 		res.Data.Rows = append(res.Data.Rows, v)
 	}
 
@@ -574,7 +608,7 @@ func AgentMonitor(context *gin.Context) {
 
 	transTime := mq.TransTime(time.Now(), constants.DATE_FORMATE)
 	key := fmt.Sprintf(constants.AGENT_MONITOR_HASH_KEY, transTime, agentReq.VccId, "*")
-	keys, err := db.GetClient().HKeys(key).Result()
+	keys, err := db.GetClient().Keys(key).Result()
 	if err != nil {
 		res.Code = -1
 		res.Message = err.Error()
@@ -587,6 +621,7 @@ func AgentMonitor(context *gin.Context) {
 	for _, v := range keys {
 		resMap, err := db.GetClient().HGetAll(v).Result()
 		if err != nil {
+			log4go.Warn("AgentMonitor hGetAll err:%v, key:%s", err, v)
 			continue
 		}
 
@@ -606,8 +641,23 @@ func AgentMonitor(context *gin.Context) {
 	res.Code = 0
 	res.Message = "suc"
 	res.Data.Rows = make([]interface{}, 0)
+
+	now := time.Now().Unix()
+	var tmpMap map[string]interface{}
 	for _, v := range arr {
-		res.Data.Rows = append(res.Data.Rows, v)
+		tmpMap = make(map[string]interface{})
+		tmpMap["name"] = v[constants.AGENT_MONITOR_FIELD_NAME]
+		tmpMap["dep_id"] = v[constants.AGENT_MONITOR_FIELD_DEP_ID]
+		tmpMap["worker_id"] = v[constants.AGENT_MONITOR_FIELD_WORKER_ID]
+		tmpMap["status"] = v[constants.AGENT_MONITOR_FIELD_STATUS]
+		statusStartTime := int64(util.GetInt(v[constants.AGENT_MONITOR_FIELD_STATUS_START_TIME]))
+		tmpMap["status_keep_time"] = fmt.Sprintf("%d", now - statusStartTime)
+		tmpMap["cur_session_num"] = v[constants.AGENT_MONITOR_FIELD_CUR_SESSION_NUM]
+		tmpMap["max_session_num"] = v[constants.AGENT_MONITOR_FIELD_MAX_SESSION_NUM]
+		tmpMap["invalid_session_num"] = v[constants.AGENT_MONITOR_FIELD_INVALID_SESSION_NUM]
+		tmpMap["indep_session_num"] = v[constants.AGENT_MONITOR_FIELD_INDEP_SESSION_NUM]
+		tmpMap["dep_session_num"] = v[constants.AGENT_MONITOR_FIELD_DEP_SESSION_NUM]
+		res.Data.Rows = append(res.Data.Rows, tmpMap)
 	}
 
 	log4go.Info("AgentMonitor suc return. req:%+v, res:%+v:", req, res)
@@ -645,6 +695,7 @@ func ChannelMonitor(context *gin.Context){
 	for _, v := range keys {
 		resMap, err := db.GetClient().HGetAll(v).Result()
 		if err != nil {
+			log4go.Warn("ChannelMonitor HGetAll err:%v, key:%s", err, v)
 			continue
 		}
 
@@ -678,6 +729,7 @@ func ChannelMonitor(context *gin.Context){
 		tmpMap["giveup_queue_num"] = v[constants.CHANNEL_MONITOR_FIELD_GIVEUP_QUEUE_NUM]
 		tmpMap["add_msg_num"] = v[constants.CHANNEL_MONITOR_FIELD_ADD_MSG_NUM]
 		tmpMap["deal_msg_num"] = v[constants.CHANNEL_MONITOR_FIELD_DEAL_MSG_NUM]
+		res.Data.Rows = append(res.Data.Rows, tmpMap)
 	}
 
 	log4go.Info("ChannelMonitor suc return. req:%+v, res:%+v:", req, res)

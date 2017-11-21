@@ -14,9 +14,9 @@ import (
 )
 
 func StartTask(){
-	t := time.NewTicker(time.Minute)
+	t := time.NewTicker(time.Second * 5)
 	select {
-	case t.C:
+	case <- t.C:
 		syncRedisToMongoDb()
 	}
 }
@@ -55,29 +55,32 @@ func syncRedisToMongoDb() {
 			aw := mq.AgentWorkMG{}
 			aw.VccId = util.GetString(strings[constants.AGENT_MONITOR_FIELD_VCCID])
 			aw.AgentId = util.GetString(strings[constants.AGENT_MONITOR_FIELD_AGENTID])
+			aw.WorkerId = util.GetString(strings[constants.AGENT_MONITOR_FIELD_WORKER_ID])
 			aw.InSessionNum = util.GetInt(strings[constants.AGENT_MONITOR_FIELD_AGENTID])
 			aw.ReceiveEvalTimes = util.GetInt(strings[constants.AGENT_MONITOR_FIELD_RECEIVE_EVAL_TIMES])
-			aw.EvalRatio = float64(aw.ReceiveEvalTimes) / float64(aw.InSessionNum)
+
+			aw.EvalRatio = float64(aw.ReceiveEvalTimes) / float64(util.GetDefaultInt(aw.InSessionNum, 1))
 			aw.ReplyNewsNum = util.GetInt(strings[constants.AGENT_MONITOR_FIELD_REPLY_MSG_TIMES])
 			aw.ReceiveMsgTimes = util.GetInt(strings[constants.AGENT_MONITOR_FIELD_RECEIVE_MSG_TIMES])
-			aw.ArRatio = float64(aw.ReceiveMsgTimes) / float64(aw.ReplyNewsNum)
+			aw.ArRatio = float64(aw.ReceiveMsgTimes) / float64(util.GetDefaultInt(aw.ReplyNewsNum, 1))
 			aw.TotalSessionNum = util.GetInt(strings[constants.AGENT_MONITOR_FIELD_TOTAL_SESSION_NUM])
 			aw.SessionKeepSecs = int64(util.GetInt(strings[constants.AGENT_MONITOR_FIELD_SESSION_TIME_TOTAL]))
-			aw.AvgSessionSecs = aw.SessionKeepSecs / int64(aw.TotalSessionNum)
+			aw.AvgSessionSecs = aw.SessionKeepSecs / int64(util.GetDefaultInt(aw.TotalSessionNum, 1))
 			aw.FirstRespSecs = int64(util.GetInt(strings[constants.AGENT_MONITOR_FIELD_FIRST_RESP_TIME]))
-			aw.AvgResponseSecs = aw.FirstRespSecs / int64(aw.TotalSessionNum)
+			aw.AvgResponseSecs = aw.FirstRespSecs / int64(util.GetDefaultInt(aw.TotalSessionNum, 1))
 			aw.Date = tranTime
 			aw.DeptId = util.GetString(strings[constants.AGENT_MONITOR_FIELD_DEP_ID])
 			aw.BusySecs = int64(util.GetInt(strings[constants.AGENT_MONITOR_FIELD_BUSY_TIME_TOTAL]))
 			aw.GroupId = util.GetString(strings[constants.AGENT_MONITOR_FIELD_GROUP_IDS])
 			aw.InvalidSessionNum = util.GetInt(strings[constants.AGENT_MONITOR_FIELD_INVALID_SESSION_NUM])
-			aw.InvalidRatio = float64(aw.InvalidSessionNum) / float64(aw.TotalSessionNum)
+			aw.InvalidRatio = float64(aw.InvalidSessionNum) / float64(util.GetDefaultInt(aw.TotalSessionNum, 1))
 			aw.OneServeClientNum = util.GetInt(strings[constants.AGENT_MONITOR_FIELD_ONE_SERV_CLIENT_NUM])
 			aw.OnlineSecs = int64(util.GetInt(strings[constants.AGENT_MONITOR_FIELD_ONLINE_TIME_TOTAL]))
 			aw.ServeUserNum = util.GetInt(strings[constants.AGENT_MONITOR_FIELD_SERV_USER_NUM])
 			aw.TransInSessionNum = util.GetInt(strings[constants.AGENT_MONITOR_FIELD_TRANSFER_IN_TIMES])
 			aw.TransOutSessionNum = util.GetInt(strings[constants.AGENT_MONITOR_FIELD_TRANSFER_OUT_TIMES])
 			aw.ReceiveSessionNUm = util.GetInt(strings[constants.AGENT_MONITOR_FIELD_DEP_SESSION_NUM])
+			aw.RequireEvalTimes = util.GetInt(strings[constants.AGENT_MONITOR_FIELD_REQUIRE_EVAL_TIMES])
 
 			agentWorkC.Upsert(bson.M{"vcc_id": aw.VccId,
 			                         "date": tranTime,
