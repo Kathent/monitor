@@ -13,6 +13,7 @@ type EvaluateMsgMQ struct {
 	EvaluateTime    int64  `json:"evaluateTime"`
 	SessionID       string `json:"sessionID"`
 	OptionName      string `json:"optionName"`
+	EvaluateExplain string `json:"evaluate_explain"`
 }
 
 //网站用户留言消息体，发给MQ的
@@ -105,28 +106,29 @@ type AgentStatusMQ struct {
 type SessionEndMq struct {
 	SessionId string `json:"sessionId"`
 	Cid string `json:"c_id"`
-	ConSucTime int64 `json:"connSuccessTime"`
+	ConSucTime string `json:"connSuccessTime"`
 	VccId string `json:"vccId"`
 	Name string `json:"userName"`
 	AgentId string `json:"agentId"`
 	WorkerId string `json:"agentWorkId"`
-	UserSpeakNum int `json:"userSpeakNum"`
-	AgentSpeakTime int `json:"agentSpeakNum"`
-	SessionEndTime int64 `json:"endTime"`
-	FirstRespTime int64 `json:"firstResponseSecs"`
+	UserSpeakNum string `json:"userSpeakNum"`
+	AgentSpeakTime string `json:"agentSpeakNum"`
+	SessionEndTime string `json:"endTime"`
+	FirstRespTime string `json:"firstResponseSecs"`
 	CreateType string `json:"createType"`
 	EndType string `json:"endType"`
-	SourceType int8 `json:"sourceType"`
+	SourceType string `json:"sourceType"`
 	EvaluateStatus string `json:"evaluateStatus"`
 	Next string `json:"next"`
 	SessionFrom string `json:"sessionFrom"`
 	UserId string `json:"userId"`
-	GiveUpQueueing int8 `json:"giveupQueueing"`
+	GiveUpQueueing string `json:"giveupQueueing"`
+	Source string `json:"source"`
+}
 
-	Source struct{
-		SourceName string `json:"sourceName"`
-		SourceId string `json:"sourceId"`
-	}
+type Source struct {
+	SourceId string `json:"sourceId"`
+	SourceName string `json:"sourceName"`
 }
 
 //会话结束的会话内容消息体，发送MQ

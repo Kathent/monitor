@@ -5,6 +5,6 @@ func LoadDb(){
 	LoadSession()
 }
 
-func init() {
+func Init() {
 	LoadDb()
 }

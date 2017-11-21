@@ -6,6 +6,8 @@ const (
 	//hash key  monitor:agent:{YMD}:{vccId}:{agentId}
 	AGENT_MONITOR_HASH_KEY = "monitor:agent:%s:%s:%s"
 
+	AGENT_MONITOR_FIELD_VCCID    = "vccId"
+	AGENT_MONITOR_FIELD_AGENTID  = "ag_id"
 	AGENT_MONITOR_FIELD_NAME     = "name"
 	AGENT_MONITOR_FIELD_WORKER_ID     = "worker_id"
 	AGENT_MONITOR_FIELD_DEP_ID     = "dep_id"
@@ -48,6 +50,8 @@ const (
 	//渠道监控hash key  monitor:channel:{YMD}:{vccId}:{channelId}
 	CHANNEL_MONITOR_HASH_KEY = "monitor:channel:%s:%s:%s"
 
+	CHANNEL_MONITOR_FIELD_CHANNEL_ID    = 		"channelId"
+	CHANNEL_MONITOR_FIELD_VCCID 		=   	"vccId"
 	CHANNEL_MONITOR_FIELD_SOURCE_TYPE   =   	"source_type"
 	CHANNEL_MONITOR_FIELD_SOURCE_NAME   =   	"source_name"
 	CHANNEL_MONITOR_FIELD_SESSION_NUM   =   	"session_num"
@@ -77,6 +81,12 @@ const (
 const(
 	//坐席工号有序集合 monitor:agentSSet:{vccId}
 	AGENT_WORK_ID_SORT_SET = "monitor:agentSSet:%s"
+)
+
+//已评价父会话
+const(
+	//已评价父会话集合 monitor:evalCid:{vccId}
+	EVALUATED_CID_SET = "monitor:evalCid:%s"
 )
 
 //坐席服务客户set
@@ -219,9 +229,15 @@ const(
 )
 
 const (
-	DATE_FORMATE = "20160102"
-	DATE_FORMATE_ALL = "2006-01-02 09:00:00"
+	DATE_FORMATE = "20060102"
+	DATE_FORMATE_ALL = "2006-01-02 15:04:05"
 
 	EVENT_TYPE_SESSION_END = "sessionEnd"
 	EVENT_TYPE_SESSION_CONTENT = "sessionContent"
+
+	SORT_ORDER_DEFAULT = "ascend"
+	SORT_ORDER_DESCEND = "descend"
+
+	SORT_ORDER_DESCEND_SYM = "-1"
+	SORT_ORDER_ASCEND_SYM = "1"
 )

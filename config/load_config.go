@@ -58,8 +58,8 @@ func Init(file string){
 	}
 
 	log.Info(fmt.Sprintf("load config path %s", file))
-	log.Info("redis addr:", conf.RedisDb.Addr)
-	log.Info("mq addr:", conf.RabbitMQ.Addr)
+	log.Info("redis addr:%s", conf.RedisDb.Addr)
+	log.Info("mq addr:%s", conf.RabbitMQ.Addr)
 	log.Info(fmt.Sprintf("debug config..%t", conf.DebugConfig.Debug))
 	log.Info("mongodb addr:%s", conf.MongoDb.Addr)
 	log.Info("logger lv:%s", conf.Logger.Level)

@@ -29,6 +29,14 @@ func StartHttpServer() {
 
 func registerHandler(en *gin.Engine) {
 	en.GET("/ping", successHandler)
+	en.POST("/im-cs/statics/work", AgentWorkStatics)
+	en.POST("/im-cs/statics/achievements", AgentAchievements)
+	en.POST("/im-cs/statics/agent_status_record", AgentStatusRecord)
+	en.POST("/im-cs/statics/session_record", AgentSessionRecord)
+	en.POST("/im-cs/statics/agent_eval", AgentEval)
+	en.POST("/im-cs/statics/source_eval", ChannelEval)
+	en.POST("/im-cs/statics/agent_monitor", AgentMonitor)
+	en.POST("/im-cs/statics/source_monitor", ChannelMonitor)
 }
 
 func successHandler(context *gin.Context) {

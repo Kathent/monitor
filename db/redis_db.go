@@ -1,9 +1,9 @@
 package db
 
 import (
-	"im-cs/config"
-	"im-cs/logger"
+	"paas/icsoc-monitor/config"
 
+	"github.com/alecthomas/log4go"
 	"github.com/go-redis/redis"
 )
 
@@ -12,19 +12,19 @@ var client *redis.Client
 func GetRedisClient() error {
 	if client == nil {
 		client = redis.NewClient(&redis.Options{
-			Addr:     config.GetConf().Db.Addr,
-			Password: config.GetConf().Db.Password,
-			DB:       config.GetConf().Db.Database,
+			Addr:     config.GetConf().RedisDb.Addr,
+			Password: config.GetConf().RedisDb.Pass,
+			DB:       config.GetConf().RedisDb.Database,
 		})
 	}
 
 	_, err := client.Ping().Result()
 	if err != nil {
-		logger.Error("fail to connect redis, error:", err)
+		log4go.Error("fail to connect redis, error:", err)
 		return err
 	}
 
-	logger.Info("succeed connect to redis")
+	log4go.Info("succeed connect to redis")
 	return nil
 }
 

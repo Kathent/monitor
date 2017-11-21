@@ -5,8 +5,7 @@ import (
 	"net"
 	"time"
 
-	"im-cs/logger"
-
+	logger "github.com/alecthomas/log4go"
 	"github.com/streadway/amqp"
 )
 
@@ -42,7 +41,9 @@ func (rmq *RmqConsumer) mainRoutine() {
 	for {
 		if rmq.core == nil {
 			if err := rmq.initCore(); err != nil {
+				logger.Debug(fmt.Sprintf("initCore err:%s", err))
 			} else if err = rmq.setupContext(); err != nil {
+				logger.Debug(fmt.Sprintf("setupContext err:%s", err))
 			} else if deliverychan, err = rmq.mqchan.Consume(
 				queueName,    // queue
 				"",           // consumer
@@ -87,6 +88,7 @@ func (rmq *RmqConsumer) initCore() (err error) {
 			return net.DialTimeout(network, addr, 2*time.Second)
 		},
 	}); err != nil {
+		logger.Debug(fmt.Sprintf("initCore dial config err:%v", err))
 	} else {
 		rmq.connerr = make(chan *amqp.Error)
 		rmq.core.NotifyClose(rmq.connerr)
@@ -128,7 +130,7 @@ func (rmq *RmqConsumer) setupContext() (err error) {
 func (rmq *RmqConsumer) setupQueue(mqchan *amqp.Channel, exchange string) (err error) {
 	//XXX the creation of channel and queue MUST be in same goroutine with `Consume`, otherwise the channel will disappear
 	//XXX block or not, this is the only choice
-	if consumerqueue, err := mqchan.QueueDeclare("im-cs-consumer", false, false, false, false, amqp.Table{"x-expires": int32(3000)}); err != nil {
+	if consumerqueue, err := mqchan.QueueDeclare(queueName, false, false, false, false, amqp.Table{"x-expires": int32(3000)}); err != nil {
 		logger.Error("consumer(%p) failed declaring queue(%s) on exchange(%s), err(%v)", rmq, "im-cs-consumer", exchange, err)
 	} else {
 		for _, routingkey := range rmq.routingKeys {
