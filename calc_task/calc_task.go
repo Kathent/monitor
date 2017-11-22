@@ -14,10 +14,148 @@ import (
 )
 
 func StartTask(){
-	t := time.NewTicker(time.Second * 5)
+	go timerWork()
+	redisToMongoDb()
+}
+
+func timerWork() {
+	log4go.Info("timerWork enter.")
+
+	now := time.Now()
+	duration := util.TomorrowDuration(now)
+	time.AfterFunc(duration, timerWork)
+
+	transTime := mq.TransTime(now.AddDate(0,0,-1), constants.DATE_FORMATE)
+	nextTransTime := mq.TransTime(now, constants.DATE_FORMATE)
+	//迁移坐席监控表
+	keyPattern := fmt.Sprintf(constants.AGENT_MONITOR_HASH_KEY, transTime, "*", "*")
+	var cursor uint64
+	var count int64 = 20
+	var keys []string
+	var err error
+
+	pipe := db.GetClient().Pipeline()
+
+	for {
+		keys, cursor, err = db.GetClient().Scan(cursor, keyPattern, count).Result()
+		if err != nil {
+			log4go.Warn("syncRedisToMongoDb scan err:%v", err)
+			break
+		}
+
+		if len(keys) <= 0 {
+			break
+		}
+
+		for _, v := range keys {
+			resMap, err := db.GetClient().HGetAll(v).Result()
+			if err != nil {
+				log4go.Warn("timerWork HGetAll err:%v", err)
+				continue
+			}
+
+			vccId := util.GetString(resMap[constants.AGENT_MONITOR_FIELD_VCCID])
+			agentId := util.GetString(resMap[constants.AGENT_MONITOR_FIELD_AGENTID])
+			newKey := fmt.Sprintf(constants.AGENT_MONITOR_HASH_KEY, nextTransTime, vccId, agentId)
+			statusStartTime := int64(util.GetInt(resMap[constants.AGENT_MONITOR_FIELD_STATUS_START_TIME]))
+			newMap := map[string]interface{}{
+				constants.AGENT_MONITOR_FIELD_VCCID:
+					util.GetString(resMap[constants.AGENT_MONITOR_FIELD_VCCID]),
+				constants.AGENT_MONITOR_FIELD_AGENTID:
+					util.GetString(resMap[constants.AGENT_MONITOR_FIELD_AGENTID]),
+				constants.AGENT_MONITOR_FIELD_WORKER_ID:
+					util.GetString(resMap[constants.AGENT_MONITOR_FIELD_WORKER_ID]),
+				constants.AGENT_MONITOR_FIELD_NAME:
+					util.GetString(resMap[constants.AGENT_MONITOR_FIELD_NAME]),
+				constants.AGENT_MONITOR_FIELD_DEP_ID:
+					util.GetString(resMap[constants.AGENT_MONITOR_FIELD_DEP_ID]),
+				constants.AGENT_MONITOR_FIELD_GROUP_IDS:
+					util.GetString(resMap[constants.AGENT_MONITOR_FIELD_GROUP_IDS]),
+				constants.AGENT_MONITOR_FIELD_MAX_SESSION_NUM:
+					util.GetString(resMap[constants.AGENT_MONITOR_FIELD_MAX_SESSION_NUM]),
+				constants.AGENT_MONITOR_FIELD_STATUS:
+					util.GetString(resMap[constants.AGENT_MONITOR_FIELD_STATUS]),
+				constants.AGENT_MONITOR_FIELD_STATUS_START_TIME:
+					util.GetIntString(now.Unix()),
+				constants.AGENT_MONITOR_FIELD_CUR_SESSION_NUM:
+					util.GetString(resMap[constants.AGENT_MONITOR_FIELD_CUR_SESSION_NUM]),
+			}
+			pipe.HMSet(newKey, newMap)
+			pipe.HIncrBy(v, constants.AGENT_MONITOR_FIELD_ONLINE_TIME_TOTAL, statusStartTime - now.Unix())
+		}
+		pipe.Exec()
+
+		if cursor <= 0 {
+			break
+		}
+	}
+
+
+	//迁移渠道监控表
+	keyPattern = fmt.Sprintf(constants.CHANNEL_MONITOR_HASH_KEY, transTime, "*", "*")
+	for {
+		keys, cursor, err = db.GetClient().Scan(cursor, keyPattern, count).Result()
+		if err != nil {
+			log4go.Warn("syncRedisToMongoDb scan err:%v", err)
+			break
+		}
+
+		if len(keys) <= 0 {
+			break
+		}
+
+		for _, v := range keys {
+			resMap, err := db.GetClient().HGetAll(v).Result()
+			if err != nil {
+				log4go.Warn("timerWork HGetAll err:%v", err)
+				continue
+			}
+
+			vccId := util.GetString(resMap[constants.AGENT_MONITOR_FIELD_VCCID])
+			agentId := util.GetString(resMap[constants.AGENT_MONITOR_FIELD_AGENTID])
+			newKey := fmt.Sprintf(constants.AGENT_MONITOR_HASH_KEY, nextTransTime, vccId, agentId)
+			statusStartTime := int64(util.GetInt(resMap[constants.AGENT_MONITOR_FIELD_STATUS_START_TIME]))
+			newMap := map[string]interface{}{
+				constants.AGENT_MONITOR_FIELD_VCCID:
+				util.GetString(resMap[constants.AGENT_MONITOR_FIELD_VCCID]),
+				constants.AGENT_MONITOR_FIELD_AGENTID:
+				util.GetString(resMap[constants.AGENT_MONITOR_FIELD_AGENTID]),
+				constants.AGENT_MONITOR_FIELD_WORKER_ID:
+				util.GetString(resMap[constants.AGENT_MONITOR_FIELD_WORKER_ID]),
+				constants.AGENT_MONITOR_FIELD_NAME:
+				util.GetString(resMap[constants.AGENT_MONITOR_FIELD_NAME]),
+				constants.AGENT_MONITOR_FIELD_DEP_ID:
+				util.GetString(resMap[constants.AGENT_MONITOR_FIELD_DEP_ID]),
+				constants.AGENT_MONITOR_FIELD_GROUP_IDS:
+				util.GetString(resMap[constants.AGENT_MONITOR_FIELD_GROUP_IDS]),
+				constants.AGENT_MONITOR_FIELD_MAX_SESSION_NUM:
+				util.GetString(resMap[constants.AGENT_MONITOR_FIELD_MAX_SESSION_NUM]),
+				constants.AGENT_MONITOR_FIELD_STATUS:
+				util.GetString(resMap[constants.AGENT_MONITOR_FIELD_STATUS]),
+				constants.AGENT_MONITOR_FIELD_STATUS_START_TIME:
+				util.GetIntString(now.Unix()),
+				constants.AGENT_MONITOR_FIELD_CUR_SESSION_NUM:
+				util.GetString(resMap[constants.AGENT_MONITOR_FIELD_CUR_SESSION_NUM]),
+			}
+			pipe.HMSet(newKey, newMap)
+			pipe.HIncrBy(v, constants.AGENT_MONITOR_FIELD_ONLINE_TIME_TOTAL, statusStartTime - now.Unix())
+		}
+		pipe.Exec()
+
+		if cursor <= 0 {
+			break
+		}
+	}
+
+	//将昨天数据拷过来
+	log4go.Info("timerWork over. next duration:%d", duration)
+}
+
+func redisToMongoDb() {
+	t := time.NewTicker(time.Second * 30)
 	for {
 		select {
-		case <- t.C:
+		case <-t.C:
 			syncRedisToMongoDb()
 		}
 	}
