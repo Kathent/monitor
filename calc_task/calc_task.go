@@ -111,34 +111,24 @@ func timerWork() {
 				continue
 			}
 
-			vccId := util.GetString(resMap[constants.AGENT_MONITOR_FIELD_VCCID])
-			agentId := util.GetString(resMap[constants.AGENT_MONITOR_FIELD_AGENTID])
-			newKey := fmt.Sprintf(constants.AGENT_MONITOR_HASH_KEY, nextTransTime, vccId, agentId)
-			statusStartTime := int64(util.GetInt(resMap[constants.AGENT_MONITOR_FIELD_STATUS_START_TIME]))
+			vccId := util.GetString(resMap[constants.CHANNEL_MONITOR_FIELD_VCCID])
+			channelId := util.GetString(resMap[constants.CHANNEL_MONITOR_FIELD_CHANNEL_ID])
+			newKey := fmt.Sprintf(constants.AGENT_MONITOR_HASH_KEY, nextTransTime, vccId, channelId)
 			newMap := map[string]interface{}{
-				constants.AGENT_MONITOR_FIELD_VCCID:
-				util.GetString(resMap[constants.AGENT_MONITOR_FIELD_VCCID]),
-				constants.AGENT_MONITOR_FIELD_AGENTID:
-				util.GetString(resMap[constants.AGENT_MONITOR_FIELD_AGENTID]),
-				constants.AGENT_MONITOR_FIELD_WORKER_ID:
-				util.GetString(resMap[constants.AGENT_MONITOR_FIELD_WORKER_ID]),
-				constants.AGENT_MONITOR_FIELD_NAME:
-				util.GetString(resMap[constants.AGENT_MONITOR_FIELD_NAME]),
-				constants.AGENT_MONITOR_FIELD_DEP_ID:
-				util.GetString(resMap[constants.AGENT_MONITOR_FIELD_DEP_ID]),
-				constants.AGENT_MONITOR_FIELD_GROUP_IDS:
-				util.GetString(resMap[constants.AGENT_MONITOR_FIELD_GROUP_IDS]),
-				constants.AGENT_MONITOR_FIELD_MAX_SESSION_NUM:
-				util.GetString(resMap[constants.AGENT_MONITOR_FIELD_MAX_SESSION_NUM]),
-				constants.AGENT_MONITOR_FIELD_STATUS:
-				util.GetString(resMap[constants.AGENT_MONITOR_FIELD_STATUS]),
-				constants.AGENT_MONITOR_FIELD_STATUS_START_TIME:
-				util.GetIntString(now.Unix()),
-				constants.AGENT_MONITOR_FIELD_CUR_SESSION_NUM:
-				util.GetString(resMap[constants.AGENT_MONITOR_FIELD_CUR_SESSION_NUM]),
+				constants.CHANNEL_MONITOR_FIELD_VCCID:
+				util.GetString(resMap[constants.CHANNEL_MONITOR_FIELD_VCCID]),
+				constants.CHANNEL_MONITOR_FIELD_CHANNEL_ID:
+				util.GetString(resMap[constants.CHANNEL_MONITOR_FIELD_CHANNEL_ID]),
+				constants.CHANNEL_MONITOR_FIELD_SOURCE_NAME:
+				util.GetString(resMap[constants.CHANNEL_MONITOR_FIELD_SOURCE_NAME]),
+				constants.CHANNEL_MONITOR_FIELD_SOURCE_TYPE:
+				util.GetString(resMap[constants.CHANNEL_MONITOR_FIELD_SOURCE_TYPE]),
+				constants.CHANNEL_MONITOR_FIELD_SESSION_NUM:
+				util.GetString(resMap[constants.CHANNEL_MONITOR_FIELD_SESSION_NUM]),
+				constants.CHANNEL_MONITOR_FIELD_QUEUE_NUM:
+				util.GetString(resMap[constants.CHANNEL_MONITOR_FIELD_QUEUE_NUM]),
 			}
 			pipe.HMSet(newKey, newMap)
-			pipe.HIncrBy(v, constants.AGENT_MONITOR_FIELD_ONLINE_TIME_TOTAL, statusStartTime - now.Unix())
 		}
 		pipe.Exec()
 

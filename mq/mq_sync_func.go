@@ -307,7 +307,7 @@ func syncAgentStatus(delivery amqp.Delivery) {
 		DeptId: util.GetString(res[1]),
 		Date: agentChangeTime,
 		PreStatus: util.GetString(res[2]),
-		Status: fmt.Sprintf("%d", agentStatus.Status + 1),
+		Status: util.GetIntString(agentStatus.Status),
 		OpType: agentStatus.EventType, //TODO:
 		PreStatusSecs: now.Unix() - int64(preStartInt),
 		Time: TransDate(agentStatus.StampTime, constants.DATE_FORMATE_ALL),
@@ -458,8 +458,8 @@ func syncSessionEnd(delivery amqp.Delivery) {
 		SessionEndTime: TransDate(sessionEndTime, constants.DATE_FORMATE_ALL),
 		FirstRespSecs: int64(util.GetInt(sessionEndMq.FirstRespTime)),
 		SessionKeepSecs: sessionEndTime - conSucTime,
-		CreateType: sessionEndMq.CreateType,
-		EndType: sessionEndMq.EndType,
+		CreateType: changeCreateType(sessionEndMq.CreateType),
+		EndType: util.GetIntString(sessionEndMq.EndType),
 		SourceType: int8(util.GetInt(sessionEndMq.SourceType)),
 		SourceName: si.SourceName,
 	}
@@ -600,6 +600,10 @@ func syncSessionEnd(delivery amqp.Delivery) {
 	if util.GetInt(sessionEndMq.GiveUpQueueing) == 1 {
 		pipe.HIncrBy(channelKey, constants.CHANNEL_MONITOR_FIELD_GIVEUP_QUEUE_NUM, 1)
 	}
+}
+
+func changeCreateType(createType string) string {
+	return "0"
 }
 
 //进入排队

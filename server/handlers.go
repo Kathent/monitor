@@ -180,10 +180,7 @@ func transAgentReq(req *MonitorRequest, defaultField string) (*AgentRequest, err
 		ar.SortOrder = constants.SORT_ORDER_DEFAULT
 	}
 
-	if util.IsEmpty(req.Status) {
-		ar.Status = "0"
-	}
-
+	ar.Status = req.Status
 	ar.DepId = req.DepId
 	return &ar, nil
 }
@@ -684,7 +681,7 @@ func AgentMonitor(context *gin.Context) {
 		}
 		tmpMap["worker_id"] = v[constants.AGENT_MONITOR_FIELD_WORKER_ID]
 		status := v[constants.AGENT_MONITOR_FIELD_STATUS]
-		if agentReq.Status != "0" && agentReq.Status != status {
+		if !util.IsEmpty(agentReq.Status) && agentReq.Status != status {
 			continue
 		}
 		tmpMap["status"] = v[constants.AGENT_MONITOR_FIELD_STATUS]
