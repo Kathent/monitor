@@ -43,6 +43,10 @@ type AppConfig struct {
 	DebugConfig struct{
 		Debug bool
 	}
+
+	Etcd struct{
+		Addr string
+	}
 }
 
 func Init(file string){
@@ -63,6 +67,7 @@ func Init(file string){
 	log.Info(fmt.Sprintf("debug config..%t", conf.DebugConfig.Debug))
 	log.Info("mongodb addr:%s", conf.MongoDb.Addr)
 	log.Info("logger lv:%s", conf.Logger.Level)
+	log.Info("etcd addr:%s", conf.Etcd.Addr)
 }
 
 func GetConf() AppConfig{

@@ -142,3 +142,41 @@ type SessionContentMQ struct {
 	Index      int      `json:"index"`
 	Content    []map[string]interface{} `json:"content"`
 }
+
+//网站渠道变更
+type WebChannels struct {
+	Id           string      `json:"id"`
+	VccId        string      `json:"vccId"`
+	Action       int         `json:"action"` //添加或者删除
+	SourceName   string      `json:"sourceName"`
+	ShortName    string      `json:"shortName"`
+	ChannelStyle interface{} `json:"channelStyle"`
+}
+
+//微信渠道变更
+type WebChatChannels struct {
+	Id              string `json:"id"`
+	UserName        string `json:"userName"`
+	VccId           string `json:"vccId"`
+	NickName        string `json:"nickName"`
+	HeadImg         string `json:"headImg"`
+	ServiceTypeInfo string `json:"serviceTypeInfo"`
+	VerifyTypeInfo  string `json:"verifyTypeInfo"`
+	AppId           string `json:"appId"`
+	FuncInfo        string `json:"funcInfo"`
+	PrincipalName   string `json:"principalName"`
+}
+
+//坐席规则配置变更
+type AgentRule struct {
+	VccID         string `json:"vccId"`   //企业ID
+	AgentID       string `json:"agentId"` //坐席ID
+	Belong        string `json:"belong"`  //
+	TotalCapacity int    `json:"totalCapacity"`
+	AgentAvatar   string `json:"agentAvatar"`
+	NickName      string `json:"nickName"`
+	AgentWorkId   string `json:"agentWorkId"` //工号
+	Name          string `json:"name"`
+	ImId          string `json:"imId"`
+	DepId 		  string `json:"dep_id"`
+}

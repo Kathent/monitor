@@ -15,9 +15,11 @@ import (
 
 func StartTask(){
 	t := time.NewTicker(time.Second * 5)
-	select {
-	case <- t.C:
-		syncRedisToMongoDb()
+	for {
+		select {
+		case <- t.C:
+			syncRedisToMongoDb()
+		}
 	}
 }
 
@@ -37,12 +39,11 @@ func syncRedisToMongoDb() {
 		keys, cursor, err = db.GetClient().Scan(cursor, keyPattern, count).Result()
 		if err != nil {
 			log4go.Warn("syncRedisToMongoDb scan err:%v", err)
-			return
+			break
 		}
 
 		if len(keys) <= 0 {
-			log4go.Info("syncRedisToMongoDb scan empty keys.")
-			return
+			break
 		}
 
 		for _, v := range keys{
@@ -56,7 +57,7 @@ func syncRedisToMongoDb() {
 			aw.VccId = util.GetString(strings[constants.AGENT_MONITOR_FIELD_VCCID])
 			aw.AgentId = util.GetString(strings[constants.AGENT_MONITOR_FIELD_AGENTID])
 			aw.WorkerId = util.GetString(strings[constants.AGENT_MONITOR_FIELD_WORKER_ID])
-			aw.InSessionNum = util.GetInt(strings[constants.AGENT_MONITOR_FIELD_AGENTID])
+			aw.InSessionNum = util.GetInt(strings[constants.AGENT_MONITOR_FIELD_INDEP_SESSION_NUM])
 			aw.ReceiveEvalTimes = util.GetInt(strings[constants.AGENT_MONITOR_FIELD_RECEIVE_EVAL_TIMES])
 
 			aw.EvalRatio = float64(aw.ReceiveEvalTimes) / float64(util.GetDefaultInt(aw.InSessionNum, 1))
@@ -96,30 +97,35 @@ func syncRedisToMongoDb() {
 			ae.IndepSessionNum = util.GetInt(strings[constants.AGENT_MONITOR_FIELD_INDEP_SESSION_NUM])
 			ae.RequireEvalTimes = util.GetInt(strings[constants.AGENT_MONITOR_FIELD_REQUIRE_EVAL_TIMES])
 			ae.EvaluateNum = util.GetInt(strings[constants.AGENT_MONITOR_FIELD_RECEIVE_EVAL_TIMES])
-			ae.RateEvaluate = float64(ae.EvaluateNum) / float64(ae.IndepSessionNum)
+			ae.RateEvaluate = float64(ae.EvaluateNum) / float64(util.GetDefaultInt(ae.IndepSessionNum, 1))
 			ae.OneStarNum = util.GetInt(strings[constants.AGENT_MONITOR_FIELD_ONE_STAR_NUM])
 			ae.TwoStarNum = util.GetInt(strings[constants.AGENT_MONITOR_FIELD_TWO_STAR_NUM])
 			ae.ThreeStarNum = util.GetInt(strings[constants.AGENT_MONITOR_FIELD_THREE_STAR_NUM])
 			ae.FourStarNum = util.GetInt(strings[constants.AGENT_MONITOR_FIELD_FOUR_STAR_NUM])
 			ae.FiveStarNum = util.GetInt(strings[constants.AGENT_MONITOR_FIELD_FIVE_STAR_NUM])
 			ae.SixStarNum = util.GetInt(strings[constants.AGENT_MONITOR_FIELD_SIX_STAR_NUM])
+			ae.Date = tranTime
 			agentEvalC.Upsert(bson.M{"vcc_id": aw.VccId,
 				"date": tranTime,
 				"ag_id": aw.AgentId}, ae)
 		}
+
+		if cursor <= 0 {
+			break
+		}
 	}
 
+	cursor = 0
 	keyPattern = fmt.Sprintf(constants.CHANNEL_MONITOR_HASH_KEY, tranTime, "*", "*")
 	for {
 		keys, cursor, err = db.GetClient().Scan(cursor, keyPattern, count).Result()
 		if err != nil {
 			log4go.Warn("syncRedisToMongoDb scan err:%v", err)
-			return
+			break
 		}
 
 		if len(keys) <= 0 {
-			log4go.Info("syncRedisToMongoDb scan empty keys.")
-			return
+			break
 		}
 
 		for _, v := range keys {
@@ -130,13 +136,14 @@ func syncRedisToMongoDb() {
 			}
 
 			ce := mq.ChannelEval{}
+			ce.Date = tranTime
 			ce.ChannelId = util.GetString(strings[constants.CHANNEL_MONITOR_FIELD_CHANNEL_ID])
 			ce.VccId = util.GetString(strings[constants.CHANNEL_MONITOR_FIELD_VCCID])
 			ce.SourceName = util.GetString(strings[constants.CHANNEL_MONITOR_FIELD_SOURCE_NAME])
 			ce.SourceType = util.GetString(strings[constants.CHANNEL_MONITOR_FIELD_SOURCE_TYPE])
 			ce.EndSessionNum = util.GetInt(strings[constants.CHANNEL_MONITOR_FIELD_END_SESSION_NUM])
 			ce.EvaluateNum = util.GetInt(strings[constants.CHANNEL_MONITOR_FIELD_EVALUATE_NUM])
-			ce.RateEvaluate = float64(ce.EvaluateNum) / float64(ce.EndSessionNum)
+			ce.RateEvaluate = float64(ce.EvaluateNum) / float64(util.GetDefaultInt(ce.EndSessionNum, 1))
 			ce.OneStarNum = util.GetInt(strings[constants.CHANNEL_MONITOR_FIELD_ONE_STAR_NUM])
 			ce.TwoStarNum = util.GetInt(strings[constants.CHANNEL_MONITOR_FIELD_TWO_STAR_NUM])
 			ce.ThreeStarNum = util.GetInt(strings[constants.CHANNEL_MONITOR_FIELD_THREE_STAR_NUM])
@@ -146,6 +153,10 @@ func syncRedisToMongoDb() {
 			channelEvalC.Upsert(bson.M{"vcc_id": ce.VccId,
 				"date": tranTime,
 				"channel_id": ce.ChannelId}, ce)
+		}
+
+		if cursor <= 0 {
+			break
 		}
 	}
 }

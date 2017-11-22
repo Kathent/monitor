@@ -36,12 +36,13 @@ func AgentWorkStatics(context *gin.Context){
 
 	collection := db.GetSession().DB("").C(constants.STATICS_AW_TABLE_NAME)
 	var pipe *mgo.Pipe
-	if util.IsEmpty(req.AgentId) {
+	if !util.IsEmpty(req.AgentId) {
 		split := strings.Split(req.AgentId, ",")
 		pipe = collection.Pipe([]bson.M{{"$match": bson.M{"vcc_id": agentReq.VccId,
-			"date": bson.M{"$gte": agentReq.Start, "$lt": agentReq.End}},
-			"ag_id": bson.M{"$in": split},},
-			{"$group":	bson.M{"_id": "$worker_id", "group_ids": bson.M{"$first": ""},
+			"date": bson.M{"$gte": agentReq.Start, "$lte": agentReq.End},
+			"ag_id": bson.M{"$in": split},},},
+			{"$group":	bson.M{"_id": "$worker_id", "group_ids": bson.M{"$first": "$group_ids"},
+				"worker_id": bson.M{"$first":"$worker_id"},
 				"online_secs": bson.M{"$sum":"$online_secs"},
 				"busy_secs": bson.M{"$sum": "$busy_secs"},
 				"in_session_num": bson.M{"$sum": "$in_session_num"},
@@ -54,8 +55,9 @@ func AgentWorkStatics(context *gin.Context){
 		})
 	}else {
 		pipe = collection.Pipe([]bson.M{{"$match": bson.M{"vcc_id": agentReq.VccId,
-			"date": bson.M{"$gte": agentReq.Start, "$lt": agentReq.End}}},
-			{"$group":	bson.M{"_id": "$worker_id", "group_ids": bson.M{"$first": ""},
+			"date": bson.M{"$gte": agentReq.Start, "$lte": agentReq.End}}},
+			{"$group":	bson.M{"_id": "$worker_id", "group_ids": bson.M{"$first": "$group_ids"},
+				"worker_id": bson.M{"$first":"$worker_id"},
 				"online_secs": bson.M{"$sum":"$online_secs"},
 				"busy_secs": bson.M{"$sum": "$busy_secs"},
 				"in_session_num": bson.M{"$sum": "$in_session_num"},
@@ -69,7 +71,10 @@ func AgentWorkStatics(context *gin.Context){
 	}
 
 	var arr = make([]mq.AgentWork, 0)
-	pipe.All(&arr)
+	allErr := pipe.All(&arr)
+	if allErr != nil {
+		log4go.Warn("allErr:%v", allErr)
+	}
 
 	total := len(arr)
 	res.Data.Total = total / agentReq.PageSize
@@ -88,7 +93,8 @@ func AgentWorkStatics(context *gin.Context){
 	var tmpMap map[string]interface{}
 	for _, v := range arr {
 		tmpMap = make(map[string]interface{})
-
+		tmpMap["group_ids"] = util.GetString(v.GroupId)
+		tmpMap["worker_id"] = util.GetString(v.WorkerId)
 		tmpMap["online_secs"] = util.GetIntString(v.OnlineSecs)
 		tmpMap["busy_secs"] = util.GetIntString(v.BusySecs)
 		tmpMap["in_session_num"] = util.GetIntString(v.InSessionNum)
@@ -97,11 +103,11 @@ func AgentWorkStatics(context *gin.Context){
 		tmpMap["trans_in_session_num"] = util.GetIntString(v.TransInSessionNum)
 		tmpMap["trans_out_session_num"] = util.GetIntString(v.TransOutSessionNum)
 		tmpMap["reply_news_num"] = util.GetIntString(v.ReplyNewsNum)
-		res.Data.Rows = append(res.Data.Rows, v)
+		res.Data.Rows = append(res.Data.Rows, tmpMap)
 	}
 
 	context.JSON(http.StatusOK, res)
-	log4go.Info("AgentWorkStatics suc return. req:%+v, res:%+v:", req, res)
+	log4go.Info("AgentWorkStatics suc return. req:%+v, res:%+v:", agentReq, res)
 	return
 }
 
@@ -121,8 +127,10 @@ func transAgentReq(req *MonitorRequest, defaultField string) (*AgentRequest, err
 	var end time.Time
 	if util.IsEmpty(req.Start) {
 		start = now
+		ar.Start = mq.TransTime(now, constants.DATE_FORMATE)
 	}else {
 		start, err = time.Parse(constants.DATE_FORMATE, req.Start)
+		ar.Start = req.Start
 	}
 
 	if err != nil {
@@ -131,8 +139,10 @@ func transAgentReq(req *MonitorRequest, defaultField string) (*AgentRequest, err
 
 	if util.IsEmpty(req.End){
 		end = time.Now()
+		ar.End = mq.TransTime(end, constants.DATE_FORMATE)
 	}else {
 		end, err = time.Parse(constants.DATE_FORMATE, req.End)
+		ar.End = req.End
 	}
 
 	if start.After(end) {
@@ -143,14 +153,12 @@ func transAgentReq(req *MonitorRequest, defaultField string) (*AgentRequest, err
 		return nil, errors.New("end is wrong")
 	}
 
-	ar.Start = req.Start
-	ar.End = req.End
-
 	if req.PageSize <= 0 {
 		req.PageSize = 10
 	}
 
 	ar.PageSize = req.PageSize
+	ar.AgentId = req.AgentId
 
 	if req.Page <= 1 {
 		ar.Page = 1
@@ -164,6 +172,8 @@ func transAgentReq(req *MonitorRequest, defaultField string) (*AgentRequest, err
 
 	if util.IsEmpty(req.SortField) {
 		ar.SortField = defaultField
+	}else {
+		ar.SortField = req.SortField
 	}
 
 	if req.SortOrder != constants.SORT_ORDER_DESCEND{
@@ -174,6 +184,7 @@ func transAgentReq(req *MonitorRequest, defaultField string) (*AgentRequest, err
 		ar.Status = "0"
 	}
 
+	ar.DepId = req.DepId
 	return &ar, nil
 }
 
@@ -194,12 +205,13 @@ func AgentAchievements(context *gin.Context){
 
 	collection := db.GetSession().DB("").C(constants.STATICS_AW_TABLE_NAME)
 	var pipe *mgo.Pipe
-	if util.IsEmpty(req.AgentId) {
+	if !util.IsEmpty(req.AgentId) {
 		split := strings.Split(req.AgentId, ",")
-		pipe = collection.Pipe([]bson.M{{"$match": bson.M{"vccId": agentReq.VccId,
-			"date": bson.M{"$gte": agentReq.Start, "$lt": agentReq.End}},
-			"agentId": bson.M{"$in": split},},
-			{"$group":	bson.M{"_id": "$worker_id", "group_ids": bson.M{"$first": ""},
+		pipe = collection.Pipe([]bson.M{{"$match": bson.M{"vcc_id": agentReq.VccId,
+			"date": bson.M{"$gte": agentReq.Start, "$lte": agentReq.End},
+			"agentId": bson.M{"$in": split},}},
+			{"$group":	bson.M{"_id": "$worker_id",  "group_ids": bson.M{"$first": "$group_ids"},
+				"worker_id": bson.M{"$first": "$worker_id"},
 				"receive_msg_times": bson.M{"$sum":"$receive_msg_times"},
 				"reply_news_num": bson.M{"$sum": "$reply_news_num"},
 				"in_session_num": bson.M{"$sum": "$in_session_num"},
@@ -215,9 +227,10 @@ func AgentAchievements(context *gin.Context){
 			{"$sort": bson.M{agentReq.SortField: agentReq.GetSortSym()}},
 		})
 	}else {
-		pipe = collection.Pipe([]bson.M{{"$match": bson.M{"vccId": agentReq.VccId,
-			"date": bson.M{"$gte": agentReq.Start, "$lt": agentReq.End}}},
-			{"$group":	bson.M{"_id": "$worker_id", "group_ids": bson.M{"$first": ""},
+		pipe = collection.Pipe([]bson.M{{"$match": bson.M{"vcc_id": agentReq.VccId,
+			"date": bson.M{"$gte": agentReq.Start, "$lte": agentReq.End}}},
+			{"$group":	bson.M{"_id": "$worker_id", "group_ids": bson.M{"$first": "$group_ids"},
+				"worker_id": bson.M{"$first": "$worker_id"},
 				"receive_msg_times": bson.M{"$sum":"$receive_msg_times"},
 				"reply_news_num": bson.M{"$sum": "$reply_news_num"},
 				"in_session_num": bson.M{"$sum": "$in_session_num"},
@@ -237,14 +250,14 @@ func AgentAchievements(context *gin.Context){
 	pipe.All(&arr)
 
 	total := len(arr)
-	res.Data.Total = total / agentReq.PageSize
+	res.Data.Total = getPageTotal(total, agentReq.PageSize)
 	res.Code = 0
 	res.Message = "suc"
 
 	if agentReq.StartIndex < total {
 		if agentReq.EndIndex >= total {
 			arr = arr[agentReq.StartIndex:]
-		}else {
+		} else {
 			arr = arr[agentReq.StartIndex: agentReq.EndIndex]
 		}
 	}
@@ -252,34 +265,42 @@ func AgentAchievements(context *gin.Context){
 	res.Data.Rows = make([]interface{}, 0)
 	var tmpMap map[string]interface{}
 	for _, v := range arr {
-		v.AvgResponseSecs = v.FirstRespSecs / int64(v.TotalSessionNum)
-		v.AvgSessionSecs = v.SessionKeepSecs / int64(v.TotalSessionNum)
-		v.ArRatio = float64(v.ReceiveMsgTimes) / float64(v.ReplyNewsNum)
-		v.EvalRatio = float64(v.ReceiveEvalTimes) / float64(v.InSessionNum)
-		v.InvalidRatio = float64(v.InvalidSessionNum) / float64(v.TotalSessionNum)
-
+		v.AvgResponseSecs = v.FirstRespSecs / int64(util.GetDefaultInt(v.TotalSessionNum, 1))
+		v.AvgSessionSecs = v.SessionKeepSecs / int64(util.GetDefaultInt(v.TotalSessionNum, 1))
+		v.ArRatio = float64(v.ReceiveMsgTimes) / float64(util.GetDefaultInt64(v.ReplyNewsNum, 1))
+		v.EvalRatio = float64(v.ReceiveEvalTimes) / float64(util.GetDefaultInt(v.InSessionNum, 1))
+		v.InvalidRatio = float64(v.InvalidSessionNum) / float64(util.GetDefaultInt(v.TotalSessionNum, 1))
 
 		tmpMap = make(map[string]interface{})
 
-		tmpMap["receive_msg_times"] = util.GetString(v.ReceiveMsgTimes)
-		tmpMap["reply_news_num"] = util.GetString(v.ReplyNewsNum)
+		tmpMap["worker_id"] = util.GetString(v.WorkerId)
+		tmpMap["group_id"] = util.GetString(v.GroupId)
+		tmpMap["receive_msg_times"] = util.GetIntString(v.ReceiveMsgTimes)
+		tmpMap["reply_news_num"] = util.GetIntString(v.ReplyNewsNum)
 		tmpMap["ar_ratio"] = fmt.Sprintf("%.2f", v.ArRatio)
-		tmpMap["require_eval_times"] = util.GetString(v.RequireEvalTimes)
-		tmpMap["total_session_num"] = util.GetString(v.TotalSessionNum)
-		tmpMap["invalid_session_num"] = util.GetString(v.InvalidSessionNum)
+		tmpMap["require_eval_times"] = util.GetIntString(v.RequireEvalTimes)
+		tmpMap["total_session_num"] = util.GetIntString(v.TotalSessionNum)
+		tmpMap["invalid_session_num"] = util.GetIntString(v.InvalidSessionNum)
 		tmpMap["invalid_ratio"] = fmt.Sprintf("%.2f", v.InvalidRatio)
 		tmpMap["avg_response_secs"] = util.GetIntString(v.AvgResponseSecs)
 		tmpMap["avg_session_secs"] = util.GetIntString(v.AvgSessionSecs)
-		tmpMap["serv_user_num"] = util.GetString(v.ServeUserNum)
-		tmpMap["one_serv_client_num"] = util.GetString(v.OneServeClientNum)
-		tmpMap["receive_eval_times"] = util.GetString(v.ReceiveEvalTimes)
+		tmpMap["serv_user_num"] = util.GetIntString(v.ServeUserNum)
+		tmpMap["one_serv_client_num"] = util.GetIntString(v.OneServeClientNum)
+		tmpMap["receive_eval_times"] = util.GetIntString(v.ReceiveEvalTimes)
 		tmpMap["eval_ratio"] = fmt.Sprintf("%.2f", v.EvalRatio)
-		res.Data.Rows = append(res.Data.Rows, v)
+		res.Data.Rows = append(res.Data.Rows, tmpMap)
 	}
 
 	context.JSON(http.StatusOK, res)
-	log4go.Info("AgentAchievements suc return. req:%+v, res:%+v:", req, res)
+	log4go.Info("AgentAchievements suc return. req:%+v, res:%+v:", agentReq, res)
 	return
+}
+func getPageTotal(total int, pageSize int) int {
+	if total % pageSize == 0 {
+		return total / pageSize
+	}else {
+		return total / pageSize + 1
+	}
 }
 
 //坐席状态变更
@@ -318,9 +339,6 @@ func AgentStatusRecord(context *gin.Context){
 	}
 
 	res.Data.Rows = make([]interface{}, 0)
-	for _, v := range arr {
-		res.Data.Rows = append(res.Data.Rows, v)
-	}
 
 	collection := db.GetSession().DB("").C(constants.STATICS_AS_TABLE_NAME)
 	if util.IsEmpty(req.AgentId) {
@@ -373,15 +391,19 @@ func AgentSessionRecord(context *gin.Context){
 
 	collection := db.GetSession().DB("").C(constants.STATICS_SR_TABLE_NAME)
 	if util.IsEmpty(req.AgentId) {
-		collection.Find(bson.M{"vcc_id": agentReq.VccId,
+		err = collection.Find(bson.M{"vcc_id": agentReq.VccId,
 			"date": bson.M{"$gte": agentReq.Start, "$lte": agentReq.End}}).
 			Sort(agentReq.GetSortString()).All(&arr)
 	}else {
 		split := strings.Split(req.AgentId, ",")
-		collection.Find(bson.M{"vcc_id": agentReq.VccId,
+		err = collection.Find(bson.M{"vcc_id": agentReq.VccId,
 			"date": bson.M{"$gte": agentReq.Start, "$lte": agentReq.End},
 			"agentId": bson.M{"$in": split},}).
 			Sort(agentReq.GetSortString()).All(&arr)
+	}
+
+	if err != nil {
+		log4go.Warn("AgentSessionRecord find err:%v", err)
 	}
 
 	total := len(arr)
@@ -419,7 +441,7 @@ func AgentSessionRecord(context *gin.Context){
 	}
 
 	context.JSON(http.StatusOK, res)
-	log4go.Info("AgentStatusRecord suc return. req:%+v, res:%+v:", req, res)
+	log4go.Info("AgentStatusRecord suc return. req:%+v, res:%+v:", agentReq, res)
 	return
 }
 
@@ -439,14 +461,15 @@ func AgentEval(context *gin.Context){
 		return
 	}
 
-	collection := db.GetSession().DB("").C(constants.STATICS_AW_TABLE_NAME)
+	collection := db.GetSession().DB("").C(constants.STATICS_AE_TABLE_NAME)
 	var pipe *mgo.Pipe
-	if util.IsEmpty(req.AgentId) {
+	if !util.IsEmpty(req.AgentId) {
 		split := strings.Split(req.AgentId, ",")
 		pipe = collection.Pipe([]bson.M{{"$match": bson.M{"vcc_id": agentReq.VccId,
-			"date": bson.M{"$gte": agentReq.Start, "$lt": agentReq.End}},
-			"agentId": bson.M{"$in": split},},
-			{"$group":	bson.M{"_id": "$worker_id", "group_ids": bson.M{"$first": ""},
+			"date": bson.M{"$gte": agentReq.Start, "$lte": agentReq.End},
+			"ag_id": bson.M{"$in": split},}},
+			{"$group":	bson.M{"_id": "$worker_id", "group_ids": bson.M{"$first": "$group_ids"},
+				"worker_id": bson.M{"$first": "$worker_id"},
 				"indep_session_num": bson.M{"$sum":"$indep_session_num"},
 				"require_eval_times": bson.M{"$sum": "$require_eval_times"},
 				"evaluate_num": bson.M{"$sum": "$evaluate_num"},
@@ -461,8 +484,9 @@ func AgentEval(context *gin.Context){
 		})
 	}else {
 		pipe = collection.Pipe([]bson.M{{"$match": bson.M{"vcc_id": agentReq.VccId,
-			"date": bson.M{"$gte": agentReq.Start, "$lt": agentReq.End}}},
-			{"$group":	bson.M{"_id": "$worker_id", "group_ids": bson.M{"$first": ""},
+			"date": bson.M{"$gte": agentReq.Start, "$lte": agentReq.End}}},
+			{"$group":	bson.M{"_id": "$worker_id", "group_ids": bson.M{"$first": "$group_ids"},
+				"worker_id": bson.M{"$first": "$worker_id"},
 				"indep_session_num": bson.M{"$sum":"$indep_session_num"},
 				"require_eval_times": bson.M{"$sum": "$require_eval_times"},
 				"evaluate_num": bson.M{"$sum": "$evaluate_num"},
@@ -478,10 +502,13 @@ func AgentEval(context *gin.Context){
 	}
 
 	var arr = make([]mq.AgentEval, 0)
-	pipe.All(&arr)
+	allErr := pipe.All(&arr)
+	if allErr != nil {
+		log4go.Warn("allErr:%v", allErr)
+	}
 
 	total := len(arr)
-	res.Data.Total = total / agentReq.PageSize
+	res.Data.Total = getPageTotal(total, agentReq.PageSize)
 	res.Code = 0
 	res.Message = "suc"
 
@@ -496,24 +523,25 @@ func AgentEval(context *gin.Context){
 	res.Data.Rows = make([]interface{}, 0)
 	var tmpMap map[string]interface{}
 	for _, v := range arr {
-		v.RateEvaluate = float64(v.EvaluateNum) / float64(v.IndepSessionNum)
+		v.RateEvaluate = float64(v.EvaluateNum) / float64(util.GetDefaultInt(v.IndepSessionNum, 1))
 		tmpMap = make(map[string]interface{})
 		tmpMap["group_ids"] = v.GroupId
 		tmpMap["worker_id"] = v.WorkerId
-		tmpMap["indep_session_num"] = fmt.Sprintf("%d", v.IndepSessionNum)
-		tmpMap["require_eval_times"] = fmt.Sprintf("%d", v.RequireEvalTimes)
-		tmpMap["evaluate_num"] = fmt.Sprintf("%d", v.RequireEvalTimes)
-		tmpMap["one_star_num"] = fmt.Sprintf("%d", v.OneStarNum)
-		tmpMap["two_star_num"] = fmt.Sprintf("%d", v.TwoStarNum)
-		tmpMap["three_star_num"] = fmt.Sprintf("%d", v.ThreeStarNum)
-		tmpMap["four_star_num"] = fmt.Sprintf("%d", v.FourStarNum)
-		tmpMap["five_star_num"] = fmt.Sprintf("%d", v.FiveStarNum)
-		tmpMap["six_star_num"] = fmt.Sprintf("%d", v.SixStarNum)
+		tmpMap["indep_session_num"] = util.GetIntString(v.IndepSessionNum)
+		tmpMap["require_eval_times"] = util.GetIntString(v.RequireEvalTimes)
+		tmpMap["evaluate_num"] = util.GetIntString(v.RequireEvalTimes)
+		tmpMap["one_star_num"] = util.GetIntString(v.OneStarNum)
+		tmpMap["two_star_num"] = util.GetIntString(v.TwoStarNum)
+		tmpMap["three_star_num"] = util.GetIntString(v.ThreeStarNum)
+		tmpMap["four_star_num"] = util.GetIntString(v.FourStarNum)
+		tmpMap["five_star_num"] = util.GetIntString(v.FiveStarNum)
+		tmpMap["six_star_num"] = util.GetIntString(v.SixStarNum)
 		tmpMap["rate_evaluate"] = fmt.Sprintf("%.2f", v.RateEvaluate)
+		res.Data.Rows = append(res.Data.Rows, tmpMap)
 	}
 
 	context.JSON(http.StatusOK, res)
-	log4go.Info("AgentEval suc return. req:%+v, res:%+v:", req, res)
+	log4go.Info("AgentEval suc return. req:%+v, res:%+v:", agentReq, res)
 	return
 }
 
@@ -532,13 +560,13 @@ func ChannelEval(context *gin.Context){
 		return
 	}
 
-	collection := db.GetSession().DB("").C(constants.STATICS_AW_TABLE_NAME)
+	collection := db.GetSession().DB("").C(constants.STATICS_CE_TABLE_NAME)
 	var pipe *mgo.Pipe
 	pipe = collection.Pipe([]bson.M{{"$match": bson.M{"vcc_id": agentReq.VccId,
 		"date": bson.M{"$gte": agentReq.Start, "$lte": agentReq.End}}},
-		{"$group":	bson.M{"_id": "$worker_id", "group_ids": bson.M{"$first": ""},
-			"source_name": bson.M{"$first": ""},
-			"source_type": bson.M{"$first": ""},
+		{"$group":	bson.M{"_id": "$channel_id", "group_ids": bson.M{"$first": "%group_ids"},
+			"source_name": bson.M{"$first": "$source_name"},
+			"source_type": bson.M{"$first": "$source_type"},
 			"end_session_num": bson.M{"$sum":"$end_session_num"},
 			"evaluate_num": bson.M{"$sum": "$evaluate_num"},
 			"one_star_num": bson.M{"$sum": "$one_star_num"},
@@ -570,20 +598,21 @@ func ChannelEval(context *gin.Context){
 	res.Data.Rows = make([]interface{}, 0)
 	var tmpMap map[string]interface{}
 	for _, v := range arr {
-		v.RateEvaluate = float64(v.EvaluateNum) / float64(v.EndSessionNum)
+		v.RateEvaluate = float64(v.EvaluateNum) / float64(util.GetDefaultInt(v.EndSessionNum, 1))
 
 		tmpMap = make(map[string]interface{})
 		tmpMap["source_name"] = v.SourceName
 		tmpMap["source_type"] = v.SourceType
-		tmpMap["end_session_num"] = fmt.Sprintf("%d", v.EndSessionNum)
-		tmpMap["evaluate_num"] = fmt.Sprintf("%d", v.EvaluateNum)
-		tmpMap["one_star_num"] = fmt.Sprintf("%d", v.OneStarNum)
-		tmpMap["two_star_num"] = fmt.Sprintf("%d", v.TwoStarNum)
-		tmpMap["three_star_num"] = fmt.Sprintf("%d", v.ThreeStarNum)
-		tmpMap["four_star_num"] = fmt.Sprintf("%d", v.FourStarNum)
-		tmpMap["five_star_num"] = fmt.Sprintf("%d", v.FiveStarNum)
-		tmpMap["six_star_num"] = fmt.Sprintf("%d", v.SixStarNum)
+		tmpMap["end_session_num"] = util.GetIntString(v.EndSessionNum)
+		tmpMap["evaluate_num"] = util.GetIntString(v.EvaluateNum)
+		tmpMap["one_star_num"] = util.GetIntString(v.OneStarNum)
+		tmpMap["two_star_num"] = util.GetIntString(v.TwoStarNum)
+		tmpMap["three_star_num"] = util.GetIntString(v.ThreeStarNum)
+		tmpMap["four_star_num"] = util.GetIntString(v.FourStarNum)
+		tmpMap["five_star_num"] = util.GetIntString(v.FiveStarNum)
+		tmpMap["six_star_num"] = util.GetIntString(v.SixStarNum)
 		tmpMap["rate_evaluate"] = fmt.Sprintf("%.2f", v.RateEvaluate)
+		res.Data.Rows = append(res.Data.Rows, tmpMap)
 	}
 
 	context.JSON(http.StatusOK, res)
@@ -647,16 +676,25 @@ func AgentMonitor(context *gin.Context) {
 	for _, v := range arr {
 		tmpMap = make(map[string]interface{})
 		tmpMap["name"] = v[constants.AGENT_MONITOR_FIELD_NAME]
+
+		depId := v[constants.AGENT_MONITOR_FIELD_DEP_ID]
 		tmpMap["dep_id"] = v[constants.AGENT_MONITOR_FIELD_DEP_ID]
+		if !util.IsEmpty(agentReq.DepId) && agentReq.DepId != depId {
+			continue
+		}
 		tmpMap["worker_id"] = v[constants.AGENT_MONITOR_FIELD_WORKER_ID]
+		status := v[constants.AGENT_MONITOR_FIELD_STATUS]
+		if agentReq.Status != "0" && agentReq.Status != status {
+			continue
+		}
 		tmpMap["status"] = v[constants.AGENT_MONITOR_FIELD_STATUS]
 		statusStartTime := int64(util.GetInt(v[constants.AGENT_MONITOR_FIELD_STATUS_START_TIME]))
 		tmpMap["status_keep_time"] = fmt.Sprintf("%d", now - statusStartTime)
-		tmpMap["cur_session_num"] = v[constants.AGENT_MONITOR_FIELD_CUR_SESSION_NUM]
-		tmpMap["max_session_num"] = v[constants.AGENT_MONITOR_FIELD_MAX_SESSION_NUM]
-		tmpMap["invalid_session_num"] = v[constants.AGENT_MONITOR_FIELD_INVALID_SESSION_NUM]
-		tmpMap["indep_session_num"] = v[constants.AGENT_MONITOR_FIELD_INDEP_SESSION_NUM]
-		tmpMap["dep_session_num"] = v[constants.AGENT_MONITOR_FIELD_DEP_SESSION_NUM]
+		tmpMap["cur_session_num"] = util.GetStringDefault(v[constants.AGENT_MONITOR_FIELD_CUR_SESSION_NUM], "0")
+		tmpMap["max_session_num"] = util.GetStringDefault(v[constants.AGENT_MONITOR_FIELD_MAX_SESSION_NUM], "0")
+		tmpMap["invalid_session_num"] = util.GetStringDefault(v[constants.AGENT_MONITOR_FIELD_INVALID_SESSION_NUM], "0")
+		tmpMap["indep_session_num"] = util.GetStringDefault(v[constants.AGENT_MONITOR_FIELD_INDEP_SESSION_NUM], "0")
+		tmpMap["dep_session_num"] = util.GetStringDefault(v[constants.AGENT_MONITOR_FIELD_DEP_SESSION_NUM], "0")
 		res.Data.Rows = append(res.Data.Rows, tmpMap)
 	}
 
@@ -721,14 +759,14 @@ func ChannelMonitor(context *gin.Context){
 		tmpMap = make(map[string]interface{})
 		tmpMap["source_name"] = v[constants.CHANNEL_MONITOR_FIELD_SOURCE_NAME]
 		tmpMap["source_type"] = v[constants.CHANNEL_MONITOR_FIELD_SOURCE_TYPE]
-		tmpMap["session_num"] = v[constants.CHANNEL_MONITOR_FIELD_SESSION_NUM]
-		tmpMap["queue_num"] = v[constants.CHANNEL_MONITOR_FIELD_QUEUE_NUM]
-		tmpMap["invalid_session_num"] = v[constants.CHANNEL_MONITOR_FIELD_INVALID_SESSION_NUM]
-		tmpMap["end_session_num"] = v[constants.CHANNEL_MONITOR_FIELD_END_SESSION_NUM]
-		tmpMap["serve_user_num"] = v[constants.CHANNEL_MONITOR_FIELD_SERVE_USER_NUM]
-		tmpMap["giveup_queue_num"] = v[constants.CHANNEL_MONITOR_FIELD_GIVEUP_QUEUE_NUM]
-		tmpMap["add_msg_num"] = v[constants.CHANNEL_MONITOR_FIELD_ADD_MSG_NUM]
-		tmpMap["deal_msg_num"] = v[constants.CHANNEL_MONITOR_FIELD_DEAL_MSG_NUM]
+		tmpMap["session_num"] = util.GetStringDefault(v[constants.CHANNEL_MONITOR_FIELD_SESSION_NUM], "0")
+		tmpMap["queue_num"] = util.GetStringDefault(v[constants.CHANNEL_MONITOR_FIELD_QUEUE_NUM], "0")
+		tmpMap["invalid_session_num"] = util.GetStringDefault(v[constants.CHANNEL_MONITOR_FIELD_INVALID_SESSION_NUM], "0")
+		tmpMap["end_session_num"] = util.GetStringDefault(v[constants.CHANNEL_MONITOR_FIELD_END_SESSION_NUM], "0")
+		tmpMap["serve_user_num"] = util.GetStringDefault(v[constants.CHANNEL_MONITOR_FIELD_SERVE_USER_NUM], "0")
+		tmpMap["giveup_queue_num"] = util.GetStringDefault(v[constants.CHANNEL_MONITOR_FIELD_GIVEUP_QUEUE_NUM], "0")
+		tmpMap["add_msg_num"] = util.GetStringDefault(v[constants.CHANNEL_MONITOR_FIELD_ADD_MSG_NUM], "0")
+		tmpMap["deal_msg_num"] = util.GetStringDefault(v[constants.CHANNEL_MONITOR_FIELD_DEAL_MSG_NUM], "0")
 		res.Data.Rows = append(res.Data.Rows, tmpMap)
 	}
 

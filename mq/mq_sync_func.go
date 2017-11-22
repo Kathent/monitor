@@ -34,6 +34,10 @@ const (
 	routeKey_sessionCreate      = "routeKey_sessionCreate"
 	routeKey_inQueue            = "routeKey_inQueue"
 	routeKey_outQueue           = "routeKey_outQueue"
+	routeKey_webChannelSync        = "routeKey_webChannelSync"
+	routeKey_weChatChannelSync        = "routeKey_weChatChannelSync"
+	routeKey_agentSync        = "routeKey_agentSync"
+	routeKey_agentBelongSync        = "routeKey_agentBelongSync"
 )
 
 var routeMap map[string]func(delivery amqp.Delivery)
@@ -57,6 +61,10 @@ func init() {
 		routeKey_sessionCreate,
 		routeKey_inQueue,
 		routeKey_outQueue,
+		routeKey_webChannelSync,
+		routeKey_weChatChannelSync,
+		routeKey_agentSync,
+		routeKey_agentBelongSync,
 	}
 
 	routeMap[routeKey_connSuccess] = syncConSuc
@@ -67,6 +75,10 @@ func init() {
 	routeMap[routeKey_outQueue] = syncOutQueue
 	routeMap[routeKey_message] = syncMessage
 	routeMap[routeKey_evaluate] = syncEvaluate
+	routeMap[routeKey_webChannelSync] = syncWebChannel
+	routeMap[routeKey_weChatChannelSync] = syncWeChatChannel
+	routeMap[routeKey_agentSync] = syncAgent
+	routeMap[routeKey_agentBelongSync] = agentBelongSync
 }
 
 func GetRouteKeys() []string{
@@ -77,17 +89,125 @@ func GetRouteFunc(key string) func(delivery amqp.Delivery){
 	return routeMap[key]
 }
 
+//action动作，增加/修改/删除
+const (
+	ADD = iota + 1
+	MODIFY
+	DELETE
+)
+
+//坐席同步
+func agentBelongSync(delivery amqp.Delivery) {
+	log.Info("agentBelongSync enter..body:%s", string(delivery.Body))
+
+	var needAck = true
+	defer deferAck(delivery, needAck)
+
+	ar := AgentRule{}
+	unmarshalErr := json.Unmarshal(delivery.Body, &ar)
+	if unmarshalErr != nil {
+		log.Warn("agentBelongSync unmarshal err:%v, body:%v", unmarshalErr, string(delivery.Body))
+		return
+	}
+
+	transTime := TransTime(time.Now(), constants.DATE_FORMATE)
+	agentKey := fmt.Sprintf(constants.AGENT_MONITOR_HASH_KEY, transTime, ar.VccID, ar.AgentID)
+	db.GetClient().HSet(agentKey, constants.AGENT_MONITOR_FIELD_GROUP_IDS, ar.Belong)
+	log.Info("agentBelongSync over..updateKey:%s, val:%s", agentKey, ar.Belong)
+}
+
+//坐席所属技能组变更同步
+func syncAgent(delivery amqp.Delivery) {
+	log.Info("syncAgent enter..body:%s", string(delivery.Body))
+
+	var needAck = true
+	defer deferAck(delivery, needAck)
+
+	ar := AgentRule{}
+	unmarshalErr := json.Unmarshal(delivery.Body, &ar)
+	if unmarshalErr != nil {
+		log.Warn("syncAgent unmarshal err:%v, body:%v", unmarshalErr, string(delivery.Body))
+		return
+	}
+
+	transTime := TransTime(time.Now(), constants.DATE_FORMATE)
+	agentKey := fmt.Sprintf(constants.AGENT_MONITOR_HASH_KEY, transTime, ar.VccID, ar.AgentID)
+
+	updateMap := map[string]interface{}{
+		constants.AGENT_MONITOR_FIELD_VCCID: ar.VccID,
+		constants.AGENT_MONITOR_FIELD_AGENTID: ar.AgentID,
+		constants.AGENT_MONITOR_FIELD_WORKER_ID: ar.AgentWorkId,
+		constants.AGENT_MONITOR_FIELD_NAME: ar.Name,
+		constants.AGENT_MONITOR_FIELD_DEP_ID: ar.DepId,
+		constants.AGENT_MONITOR_FIELD_GROUP_IDS: ar.Belong,
+		constants.AGENT_MONITOR_FIELD_MAX_SESSION_NUM: ar.TotalCapacity,
+	}
+
+	pipe := db.GetClient().Pipeline()
+	pipe.HMSet(agentKey, updateMap)
+	pipe.HSetNX(agentKey, constants.AGENT_MONITOR_FIELD_STATUS, "0")
+	pipe.Exec()
+	log.Info("syncAgent over..updateMap:%+v", updateMap)
+}
+
+//网站渠道同步
+func syncWebChannel(delivery amqp.Delivery){
+	var needAck = true
+	defer deferAck(delivery, needAck)
+
+	wc := WebChannels{}
+	unmarshalErr := json.Unmarshal(delivery.Body, &wc)
+	if unmarshalErr != nil {
+		log.Warn("syncWebChannel unmarshal err:%v, body:%v", unmarshalErr, string(delivery.Body))
+		return
+	}
+
+	now := time.Now()
+	time := TransTime(now, constants.DATE_FORMATE)
+	key := fmt.Sprintf(constants.CHANNEL_MONITOR_HASH_KEY, time, wc.VccId, wc.Id)
+
+	if wc.Action == ADD || wc.Action == MODIFY {
+		tmpMap := map[string]interface{}{
+			constants.CHANNEL_MONITOR_FIELD_VCCID: wc.VccId,
+			constants.CHANNEL_MONITOR_FIELD_CHANNEL_ID: wc.Id,
+			constants.CHANNEL_MONITOR_FIELD_SOURCE_NAME: wc.SourceName,
+			constants.CHANNEL_MONITOR_FIELD_SOURCE_TYPE: "0",
+		}
+		db.GetClient().HMSet(key, tmpMap)
+	}else if wc.Action == DELETE {
+		db.GetClient().Del(key)
+		//TODO: mongodb 删除?
+	}
+}
+
+//微信渠道同步
+func syncWeChatChannel(delivery amqp.Delivery) {
+	var needAck = true
+	defer deferAck(delivery, needAck)
+
+	wc := WebChatChannels{}
+	unmarshalErr := json.Unmarshal(delivery.Body, &wc)
+	if unmarshalErr != nil {
+		log.Warn("syncWeChatChannel unmarshal err:%v, body:%v", unmarshalErr, string(delivery.Body))
+		return
+	}
+
+	now := time.Now()
+	time := TransTime(now, constants.DATE_FORMATE)
+	key := fmt.Sprintf(constants.CHANNEL_MONITOR_HASH_KEY, time, wc.VccId, wc.Id)
+	tmpMap := map[string]interface{}{
+		constants.CHANNEL_MONITOR_FIELD_VCCID: wc.VccId,
+		constants.CHANNEL_MONITOR_FIELD_CHANNEL_ID: wc.Id,
+		constants.CHANNEL_MONITOR_FIELD_SOURCE_NAME: wc.NickName,
+		constants.CHANNEL_MONITOR_FIELD_SOURCE_TYPE: "1",
+	}
+	db.GetClient().HMSet(key, tmpMap)
+}
+
 //坐席和用户连接成功
 func syncConSuc(delivery amqp.Delivery) {
 	var needAck = true
-
-	defer func() {
-		if needAck {
-			delivery.Acknowledger.Ack(delivery.DeliveryTag, false)
-		}else {
-			delivery.Acknowledger.Nack(delivery.DeliveryTag, false, true)
-		}
-	}()
+	defer deferAck(delivery, needAck)
 
 	conSuc := ConnSuccessMQ{}
 	unmarshalErr := json.Unmarshal(delivery.Body, &conSuc)

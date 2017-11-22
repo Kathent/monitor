@@ -50,7 +50,7 @@ func (ag AgentRequest) GetSortString() string{
 	return fmt.Sprintf("-%s", ag.SortField)
 }
 
-func (ag AgentRequest) GetSortSym() string {
+func (ag AgentRequest) GetSortSym() int {
 	if ag.SortOrder == constants.SORT_ORDER_DEFAULT{
 		return constants.SORT_ORDER_ASCEND_SYM
 	}

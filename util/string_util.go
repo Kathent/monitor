@@ -20,6 +20,19 @@ func GetString(str interface{}) string {
 	}
 }
 
+func GetStringDefault(str interface{}, defaultStr string) string {
+	if str == nil {
+		return defaultStr
+	}else if tmp, ok := str.(string); ok {
+		if IsEmpty(tmp) {
+			return defaultStr
+		}
+		return tmp
+	}else {
+		return defaultStr
+	}
+}
+
 func GetInt(str interface{}) int {
 	st := GetString(str)
 	i, _ := strconv.Atoi(st)
@@ -38,6 +51,13 @@ func GetIntString(intVal interface{}) string{
 }
 
 func GetDefaultInt(intVal, defaultVal int) int {
+	if intVal <= 0 {
+		return defaultVal
+	}
+	return intVal
+}
+
+func GetDefaultInt64(intVal, defaultVal int64) int64 {
 	if intVal <= 0 {
 		return defaultVal
 	}
