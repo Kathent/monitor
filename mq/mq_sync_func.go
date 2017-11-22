@@ -308,7 +308,7 @@ func syncAgentStatus(delivery amqp.Delivery) {
 		Date: agentChangeTime,
 		PreStatus: util.GetString(res[2]),
 		Status: util.GetIntString(agentStatus.Status),
-		OpType: agentStatus.EventType, //TODO:
+		OpType: agentStatus.OpType, //TODO:
 		PreStatusSecs: now.Unix() - int64(preStartInt),
 		Time: TransDate(agentStatus.StampTime, constants.DATE_FORMATE_ALL),
 	}

@@ -100,6 +100,7 @@ type AgentStatusMQ struct {
 	AgentId   string `json:"agentID"`
 	VccId     string `json:"vccID"`
 	Status    int    `json:"status"`   //0:离线；1：忙碌；2：在线
+	OpType 	  string `json:"op_type"`
 }
 
 //会话结束
