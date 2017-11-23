@@ -57,6 +57,11 @@ func timerWork() {
 			vccId := util.GetString(resMap[constants.AGENT_MONITOR_FIELD_VCCID])
 			agentId := util.GetString(resMap[constants.AGENT_MONITOR_FIELD_AGENTID])
 			newKey := fmt.Sprintf(constants.AGENT_MONITOR_HASH_KEY, nextTransTime, vccId, agentId)
+
+			exist, _ := db.GetClient().HExists(newKey, constants.AGENT_MONITOR_FIELD_AGENTID).Result()
+			if exist {//如果存在了就不再处理
+				continue
+			}
 			statusStartTime := int64(util.GetInt(resMap[constants.AGENT_MONITOR_FIELD_STATUS_START_TIME]))
 			newMap := map[string]interface{}{
 				constants.AGENT_MONITOR_FIELD_VCCID:
@@ -113,7 +118,7 @@ func timerWork() {
 
 			vccId := util.GetString(resMap[constants.CHANNEL_MONITOR_FIELD_VCCID])
 			channelId := util.GetString(resMap[constants.CHANNEL_MONITOR_FIELD_CHANNEL_ID])
-			newKey := fmt.Sprintf(constants.AGENT_MONITOR_HASH_KEY, nextTransTime, vccId, channelId)
+			newKey := fmt.Sprintf(constants.CHANNEL_MONITOR_HASH_KEY, nextTransTime, vccId, channelId)
 			newMap := map[string]interface{}{
 				constants.CHANNEL_MONITOR_FIELD_VCCID:
 				util.GetString(resMap[constants.CHANNEL_MONITOR_FIELD_VCCID]),

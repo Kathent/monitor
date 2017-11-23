@@ -9,7 +9,7 @@ type AgentStatus struct {
 	Date string	`bson:"date"`
 	PreStatus string `bson:"pre_status"`
 	Status string	`bson:"status"`
-	OpType string	`bson:"op_type"`
+	OpType string	`bson:"action"`
 	PreStatusSecs int64 `bson:"pre_status_secs"`
 	Time string	`bson:"time"`
 }

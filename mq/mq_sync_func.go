@@ -130,6 +130,7 @@ func syncAgent(delivery amqp.Delivery) {
 		return
 	}
 
+	now := time.Now()
 	transTime := TransTime(time.Now(), constants.DATE_FORMATE)
 	agentKey := fmt.Sprintf(constants.AGENT_MONITOR_HASH_KEY, transTime, ar.VccID, ar.AgentID)
 
@@ -141,11 +142,12 @@ func syncAgent(delivery amqp.Delivery) {
 		constants.AGENT_MONITOR_FIELD_DEP_ID: ar.DepId,
 		constants.AGENT_MONITOR_FIELD_GROUP_IDS: ar.Belong,
 		constants.AGENT_MONITOR_FIELD_MAX_SESSION_NUM: ar.TotalCapacity,
+		constants.AGENT_MONITOR_FIELD_STATUS: ar.Status,
 	}
 
 	pipe := db.GetClient().Pipeline()
 	pipe.HMSet(agentKey, updateMap)
-	pipe.HSetNX(agentKey, constants.AGENT_MONITOR_FIELD_STATUS, "0")
+	pipe.HSetNX(agentKey, constants.AGENT_MONITOR_FIELD_STATUS_START_TIME, util.GetIntString(now.Unix()))
 	pipe.Exec()
 	log.Info("syncAgent over..updateMap:%+v", updateMap)
 }
@@ -446,7 +448,7 @@ func syncSessionEnd(delivery amqp.Delivery) {
 	conSucTime := int64(util.GetInt(sessionEndMq.ConSucTime))
 	sr := SessionRecord{
 		Sid: sessionEndMq.SessionId,
-		Cid: "",//TODO:
+		Cid: sessionEndMq.Cid,
 		Date: transTime,
 		VccId: sessionEndMq.VccId,
 		Name: sessionEndMq.Name,
@@ -463,6 +465,8 @@ func syncSessionEnd(delivery amqp.Delivery) {
 		SourceType: int8(util.GetInt(sessionEndMq.SourceType)),
 		SourceName: si.SourceName,
 	}
+
+	log.Info("syncSessionEnd enter. mq:%+v, sr:%+v", sessionEndMq, sr)
 
 	collection := db.GetSession().DB("").C(constants.STATICS_SR_TABLE_NAME)
 	_, insertErr := collection.Upsert(bson.M{"sid": sessionEndMq.SessionId}, sr)
@@ -545,7 +549,7 @@ func syncSessionEnd(delivery amqp.Delivery) {
 			//if sessionEndMq.EvaluateStatus == "1" {//已评价父会话数
 			//	pipe.HIncrBy(channelKey, constants.CHANNEL_MONITOR_FIELD_EVALUATE_NUM, 1)
 			//}
-		}else {
+		}else if cidNum == 2{
 			//一次会话客户数
 			pipe.HIncrBy(agentMonitorKey, constants.AGENT_MONITOR_FIELD_ONE_SERV_CLIENT_NUM, -1)
 		}
@@ -600,10 +604,17 @@ func syncSessionEnd(delivery amqp.Delivery) {
 	if util.GetInt(sessionEndMq.GiveUpQueueing) == 1 {
 		pipe.HIncrBy(channelKey, constants.CHANNEL_MONITOR_FIELD_GIVEUP_QUEUE_NUM, 1)
 	}
+
+	pipe.Exec()
 }
 
 func changeCreateType(createType string) string {
-	return "0"
+	if createType == constants.SESSION_CREATE_TYPE_MESSAGE {
+		return constants.SESSION_CREATE_TYPE_MESSAGE_INT
+	}else if createType == constants.SESSION_CREATE_TYPE_REVERT {
+		return constants.SESSION_CREATE_TYPE_REVERT_INT
+	}
+	return constants.SESSION_CREATE_TYPE_DIRECT_INT
 }
 
 //进入排队

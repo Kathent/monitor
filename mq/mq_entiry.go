@@ -106,7 +106,7 @@ type AgentStatusMQ struct {
 //会话结束
 type SessionEndMq struct {
 	SessionId string `json:"sessionId"`
-	Cid string `json:"c_id"`
+	Cid string `json:"cid"`
 	ConSucTime string `json:"connSuccessTime"`
 	VccId string `json:"vccId"`
 	Name string `json:"userName"`
@@ -174,7 +174,7 @@ type AgentRule struct {
 	AgentID       string `json:"agentId"` //坐席ID
 	Belong        string `json:"belong"`  //
 	TotalCapacity int    `json:"totalCapacity"`
-	AgentAvatar   string `json:"agentAvatar"`
+	Status   	  string `json:"status"`
 	NickName      string `json:"nickName"`
 	AgentWorkId   string `json:"agentWorkId"` //工号
 	Name          string `json:"name"`
